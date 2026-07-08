@@ -27,6 +27,31 @@ pub(crate) fn paddle_bounce_direction(offset_frac: f32) -> Vec2 {
     Vec2::new(angle.sin(), angle.cos())
 }
 
+/// Velocity a ball should leave a destroyed brick with.
+///
+/// Bricks are destroyed the instant a contact starts, which cancels rapier's
+/// contact impulse whenever the ball catches a brick corner or squeezes into
+/// the gap between two bricks (the contact normal is horizontal there, so
+/// nothing pushes the ball back) — the ball would plough straight through
+/// the grid. So, like paddle bounces, the game supplies the reflection:
+/// push the velocity *away from the brick* on the dominant contact axis.
+/// Idempotent — if rapier already reflected the ball, this changes nothing.
+pub(crate) fn brick_bounce_velocity(ball_pos: Vec2, vel: Vec2, brick_pos: Vec2) -> Vec2 {
+    let d = ball_pos - brick_pos;
+    let away_x = if d.x >= 0.0 { 1.0 } else { -1.0 };
+    let away_y = if d.y >= 0.0 { 1.0 } else { -1.0 };
+    // Normalize the offset by the brick's half-extents to find which face
+    // the ball is closest to; ties go to vertical (breakout balls travel
+    // mostly vertically).
+    let mut v = vel;
+    if d.y.abs() / (BRICK_H / 2.0) >= d.x.abs() / (BRICK_W / 2.0) {
+        v.y = v.y.abs() * away_y;
+    } else {
+        v.x = v.x.abs() * away_x;
+    }
+    v
+}
+
 /// Re-aim `dir` if it is too horizontal, preserving its left/right and
 /// up/down senses. Keeps the ball from shuttling between the side walls.
 pub(crate) fn enforce_min_vertical(dir: Vec2) -> Vec2 {
@@ -267,6 +292,23 @@ impl BreakoutGame {
             }
 
             if let Some(pos) = entity_position(ctx.world, brick.entity) {
+                // Destroying the brick cancels rapier's contact impulse, so
+                // reflect every ball that hit it ourselves (see
+                // brick_bounce_velocity for why corner/gap hits need this).
+                for &ball in all_balls.iter() {
+                    let hit_this = collisions.iter()
+                        .any(|c| c.event.started && c.event.involves(ball, brick.entity));
+                    if !hit_this { continue; }
+                    if let (Some(ball_pos), Some((vel, _))) =
+                        (entity_position(ctx.world, ball), self.physics.get_body_velocity(ball))
+                    {
+                        let new_vel = brick_bounce_velocity(ball_pos, vel, pos);
+                        if new_vel != vel {
+                            self.physics.set_velocity(ball, new_vel, 0.0);
+                        }
+                    }
+                }
+
                 ctx.particles.spawn_burst(pos, &effects::brick_burst(brick.color, &theme, self.tex_id));
                 if let Some(grid) = self.grid.as_mut() {
                     grid.apply_impulse(&GridImpulse::Radial {
@@ -381,63 +423,5 @@ impl BreakoutGame {
                 sprite.visible = visible;
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn paddle_bounce_center_hit_goes_straight_up() {
-        let dir = paddle_bounce_direction(0.0);
-        assert!(dir.x.abs() < 0.0001);
-        assert!((dir.y - 1.0).abs() < 0.0001);
-    }
-
-    #[test]
-    fn paddle_bounce_edge_hits_deflect_sideways_but_upward() {
-        let right = paddle_bounce_direction(1.0);
-        assert!(right.x > 0.8, "edge hit should deflect hard right: {right:?}");
-        assert!(right.y > 0.0, "ball must still travel upward: {right:?}");
-
-        let left = paddle_bounce_direction(-1.0);
-        assert!((left.x + right.x).abs() < 0.0001, "bounce should be symmetric");
-        assert_eq!(left.y, right.y);
-    }
-
-    #[test]
-    fn paddle_bounce_clamps_past_edge_overshoot() {
-        assert_eq!(paddle_bounce_direction(5.0), paddle_bounce_direction(1.0));
-        assert_eq!(paddle_bounce_direction(-5.0), paddle_bounce_direction(-1.0));
-    }
-
-    #[test]
-    fn paddle_bounce_directions_are_unit_length() {
-        for offset in [-1.0, -0.5, 0.0, 0.5, 1.0] {
-            let dir = paddle_bounce_direction(offset);
-            assert!((dir.length() - 1.0).abs() < 0.0001);
-        }
-    }
-
-    #[test]
-    fn min_vertical_leaves_steep_directions_alone() {
-        let dir = Vec2::new(0.6, 0.8);
-        assert_eq!(enforce_min_vertical(dir), dir);
-    }
-
-    #[test]
-    fn min_vertical_reaims_shallow_directions_preserving_signs() {
-        let fixed = enforce_min_vertical(Vec2::new(-0.999, -0.04));
-        assert!(fixed.x < 0.0);
-        assert!((fixed.y + MIN_VERTICAL_FRACTION).abs() < 0.0001);
-        assert!((fixed.length() - 1.0).abs() < 0.0001, "must stay unit length");
-    }
-
-    #[test]
-    fn min_vertical_pushes_pure_horizontal_upward() {
-        let fixed = enforce_min_vertical(Vec2::new(1.0, 0.0));
-        assert!(fixed.y > 0.0);
-        assert!((fixed.length() - 1.0).abs() < 0.0001);
     }
 }

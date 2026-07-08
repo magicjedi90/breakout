@@ -4,6 +4,8 @@ mod constants;
 mod drawing;
 mod effects;
 mod gameplay;
+#[cfg(test)]
+mod gameplay_tests;
 mod levels;
 mod menu;
 mod spawning;
