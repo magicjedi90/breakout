@@ -4,6 +4,7 @@ mod constants;
 mod drawing;
 mod effects;
 mod gameplay;
+mod levels;
 mod menu;
 mod spawning;
 mod types;
@@ -11,24 +12,9 @@ mod types;
 use engine_core::prelude::*;
 use chaos_theme::ChaosTheme;
 use constants::*;
+use levels::game_root;
 use spawning::*;
 use types::*;
-
-/// Directory that holds the game's `assets/` and `saves/` folders.
-///
-/// Prefers the executable's directory (shipped layout: assets next to the
-/// binary), falling back to the crate directory so `cargo run` works from
-/// any current working directory.
-fn game_root() -> std::path::PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if dir.join("assets").is_dir() {
-                return dir.to_path_buf();
-            }
-        }
-    }
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
 
 impl Game for BreakoutGame {
     fn init(&mut self, ctx: &mut GameContext) {
@@ -59,6 +45,11 @@ impl Game for BreakoutGame {
         self.walls.push(spawn_wall(ctx.world, Vec2::new(side_x, 0.0), WALL_THICKNESS, WIN_H, tex.id, theme.wall_color));
 
         self.bottom_sensor = Some(spawn_bottom_sensor(ctx.world));
+
+        // Brick layout is authored in the level scene (editor-editable);
+        // start_game() instantiates it each match, falling back to the
+        // generated grid if the file is missing.
+        self.level = levels::load_level_data();
 
         // Bricks and ball spawn fresh on every `start_game()`. Build the
         // deforming grid backdrop now so it exists before the first match.

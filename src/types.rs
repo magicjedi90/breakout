@@ -25,6 +25,9 @@ pub(crate) struct BreakoutGame {
     pub(crate) ball: Option<EntityId>,
     pub(crate) extra_balls: Vec<EntityId>,
     pub(crate) bricks: Vec<Brick>,
+    /// Parsed level scene (brick layout); re-instantiated every match.
+    /// `None` means the scene file was missing — use the generated grid.
+    pub(crate) level: Option<SceneData>,
     pub(crate) walls: Vec<EntityId>,
     pub(crate) bottom_sensor: Option<EntityId>,
     pub(crate) background: Option<EntityId>,
@@ -59,6 +62,7 @@ impl Default for BreakoutGame {
             ball: None,
             extra_balls: Vec::new(),
             bricks: Vec::new(),
+            level: None,
             walls: Vec::new(),
             bottom_sensor: None,
             background: None,

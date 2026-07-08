@@ -138,7 +138,7 @@ impl BreakoutGame {
             }
             GameState::GameOver { .. } => {
                 if ctx.input.is_key_just_pressed(KeyCode::Space) {
-                    self.start_game(ctx.world);
+                    self.start_game(ctx);
                 } else if ctx.input.is_key_just_pressed(KeyCode::Escape) {
                     self.reset_to_title(ctx.world);
                 }

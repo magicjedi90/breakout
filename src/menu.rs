@@ -61,32 +61,50 @@ impl BreakoutGame {
             // Mirror the runtime selection into the engine context so any
             // code reading ctx.chaos_mode agrees with self.chaos_mode.
             ctx.chaos_mode = self.chaos_mode;
-            self.start_game(ctx.world);
+            self.start_game(ctx);
         }
     }
 
     /// Reset score/lives, rebuild the brick grid, and put a fresh ball on
     /// the paddle.
-    pub(crate) fn start_game(&mut self, world: &mut World) {
+    pub(crate) fn start_game(&mut self, ctx: &mut GameContext) {
         self.score = 0;
         self.lives = STARTING_LIVES;
         self.speed_mult = 1.0;
         self.combo = 0;
 
-        self.destroy_all_balls(world);
+        self.destroy_all_balls(ctx.world);
         for brick in self.bricks.drain(..) {
-            self.physics.destroy_entity(world, brick.entity);
+            self.physics.destroy_entity(ctx.world, brick.entity);
         }
-        self.bricks = spawning::spawn_bricks(world, self.tex_id);
+        self.bricks = self.spawn_level_bricks(ctx);
 
-        let ball = self.spawn_ball(world);
+        let ball = self.spawn_ball(ctx.world);
         self.ball = Some(ball);
 
-        self.apply_theme(world);
+        self.apply_theme(ctx.world);
         if let Some(paddle) = self.paddle {
             self.physics.set_kinematic_target(paddle, Vec2::new(0.0, PADDLE_Y), 0.0);
         }
         self.state = GameState::Serving;
+    }
+
+    /// Spawn the brick grid from the level scene, falling back to the
+    /// generated grid when the scene is missing, broken, or empty — worst
+    /// case is always the classic layout, never a brickless game.
+    fn spawn_level_bricks(&mut self, ctx: &mut GameContext) -> Vec<Brick> {
+        if let Some(level) = &self.level {
+            match crate::levels::spawn_bricks_from_scene(level, ctx.world, ctx.assets) {
+                Ok(bricks) if !bricks.is_empty() => return bricks,
+                Ok(_) => eprintln!(
+                    "breakout: level scene has no bricks; using generated brick grid"
+                ),
+                Err(e) => eprintln!(
+                    "breakout: failed to instantiate level scene: {e}; using generated brick grid"
+                ),
+            }
+        }
+        spawning::spawn_bricks(ctx.world, self.tex_id)
     }
 
     /// Push the current `chaos_mode`'s look onto the live entities:
