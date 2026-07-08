@@ -4,7 +4,139 @@
 use engine_core::prelude::*;
 
 use crate::constants::*;
-use crate::gameplay::{brick_bounce_velocity, enforce_min_vertical, paddle_bounce_direction};
+use crate::gameplay::{
+    brick_bounce_velocity, brick_hit_outcome, enforce_min_vertical, paddle_bounce_direction,
+    BrickHitOutcome,
+};
+
+#[test]
+fn brick_hit_outcome_table() {
+    assert_eq!(brick_hit_outcome(1, false), BrickHitOutcome::Destroyed);
+    assert_eq!(brick_hit_outcome(2, false), BrickHitOutcome::Damaged { hits_left: 1 });
+    assert_eq!(brick_hit_outcome(3, false), BrickHitOutcome::Damaged { hits_left: 2 });
+    // Wrecking one-hit-kills anything, armor included
+    assert_eq!(brick_hit_outcome(3, true), BrickHitOutcome::Destroyed);
+    assert_eq!(brick_hit_outcome(1, true), BrickHitOutcome::Destroyed);
+    // Degenerate zero never underflows
+    assert_eq!(brick_hit_outcome(0, false), BrickHitOutcome::Destroyed);
+}
+
+/// An armored brick's first hit must reflect the ball via rapier (the brick
+/// SURVIVES, so its contact impulse lands — no game-side correction needed),
+/// and the second hit destroys it.
+#[test]
+fn armored_brick_reflects_first_hit_and_dies_on_second() {
+    let mut world = World::new();
+    let mut physics = PhysicsSystem::with_config(PhysicsConfig::top_down());
+
+    let brick = world.spawn()
+        .with(Transform2D::new(Vec2::new(0.0, 100.0)))
+        .with(RigidBody::new_static())
+        .with(Collider::box_collider(BRICK_W, BRICK_H).with_friction(0.0).with_restitution(1.0))
+        .id();
+    let mut hits_left: u32 = 2;
+
+    let ball = world.spawn()
+        .with(Transform2D::new(Vec2::new(0.0, -100.0)))
+        .with(RigidBody::new_dynamic()
+            .with_gravity_scale(0.0)
+            .with_rotation_locked(true)
+            .with_linear_damping(0.0)
+            .with_angular_damping(0.0)
+            .with_ccd(true))
+        .with(Collider::circle_collider(BALL_RADIUS).with_friction(0.0).with_restitution(1.0))
+        .id();
+    physics.set_velocity(ball, Vec2::new(0.0, BALL_SPEED), 0.0);
+
+    let mut hits = 0;
+    let mut reflected_after_first = false;
+    for _ in 0..600 {
+        physics.update(&mut world, 1.0 / 60.0);
+        let events = physics.collision_events().to_vec();
+        let hit = events.iter().any(|c| c.event.started && c.event.involves(ball, brick));
+        if hit {
+            hits += 1;
+            match brick_hit_outcome(hits_left, false) {
+                BrickHitOutcome::Damaged { hits_left: left } => {
+                    hits_left = left;
+                    // Brick survives: rapier's own impulse must reflect the
+                    // ball downward within a few frames.
+                    for _ in 0..5 {
+                        physics.update(&mut world, 1.0 / 60.0);
+                    }
+                    let (vel, _) = physics.get_body_velocity(ball).expect("ball alive");
+                    assert!(vel.y < -1.0, "first hit must reflect the ball, got {vel:?}");
+                    reflected_after_first = true;
+                    // Send it back up for the kill shot.
+                    physics.set_velocity(ball, Vec2::new(0.0, BALL_SPEED), 0.0);
+                }
+                BrickHitOutcome::Destroyed => {
+                    physics.destroy_entity(&mut world, brick);
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(reflected_after_first, "armored brick never took its first hit");
+    assert_eq!(hits, 2, "expected damage hit then kill hit, got {hits}");
+    assert!(!world.entities().contains(&brick), "brick must be destroyed on the second hit");
+}
+
+/// Falling pickups: one lands on the capsule paddle (caught — started event
+/// against the kinematic body), one falls past it into the bottom sensor
+/// (missed — despawn signal). The exact entity recipe the game uses.
+#[test]
+fn falling_pickup_caught_by_paddle_and_missed_one_hits_sensor() {
+    let mut world = World::new();
+    let mut physics = PhysicsSystem::with_config(PhysicsConfig::top_down());
+
+    let paddle = world.spawn()
+        .with(Transform2D::new(Vec2::new(0.0, PADDLE_Y)))
+        .with(RigidBody::new_kinematic().with_rotation_locked(true))
+        .with(Collider::new(ColliderShape::capsule_x(PADDLE_W, PADDLE_H * 0.5))
+            .with_friction(0.0)
+            .with_restitution(1.0))
+        .id();
+    let sensor = world.spawn()
+        .with(Transform2D::new(Vec2::new(0.0, -(WIN_H / 2.0 + 30.0))))
+        .with(RigidBody::new_static())
+        .with(Collider::box_collider(WIN_W + 200.0, 20.0).as_sensor())
+        .id();
+
+    let spawn_pickup = |world: &mut World, physics: &mut PhysicsSystem, x: f32| {
+        let e = world.spawn()
+            .with(Transform2D::new(Vec2::new(x, 100.0)))
+            .with(RigidBody::new_dynamic().with_gravity_scale(0.0).with_rotation_locked(true))
+            .with(Collider::box_collider(PICKUP_SIZE, PICKUP_SIZE).as_sensor())
+            .id();
+        physics.set_velocity(e, Vec2::new(0.0, -PICKUP_FALL_SPEED), 0.0);
+        e
+    };
+    let on_target = spawn_pickup(&mut world, &mut physics, 0.0); // falls onto the paddle
+    let wide = spawn_pickup(&mut world, &mut physics, 200.0); // misses it
+
+    let mut caught = false;
+    let mut missed = false;
+    for _ in 0..600 {
+        physics.update(&mut world, 1.0 / 60.0);
+        let events = physics.collision_events().to_vec();
+        if events.iter().any(|c| c.event.started && c.event.involves(on_target, paddle)) {
+            caught = true;
+            physics.destroy_entity(&mut world, on_target);
+        }
+        if events.iter().any(|c| c.event.started && c.event.involves(wide, sensor)) {
+            missed = true;
+            physics.destroy_entity(&mut world, wide);
+        }
+        if caught && missed {
+            break;
+        }
+    }
+
+    assert!(caught, "on-target pickup never registered a paddle catch");
+    assert!(missed, "wide pickup never reached the bottom sensor");
+}
 
 #[test]
 fn paddle_bounce_center_hit_goes_straight_up() {

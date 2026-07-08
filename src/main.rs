@@ -8,6 +8,7 @@ mod gameplay;
 mod gameplay_tests;
 mod levels;
 mod menu;
+mod power_ups;
 mod spawning;
 mod types;
 
@@ -48,10 +49,9 @@ impl Game for BreakoutGame {
 
         self.bottom_sensor = Some(spawn_bottom_sensor(ctx.world));
 
-        // Brick layout is authored in the level scene (editor-editable);
-        // start_game() instantiates it each match, falling back to the
-        // generated grid if the file is missing.
-        self.level = levels::load_level_data();
+        // Brick layouts are authored in per-level scenes (editor-editable);
+        // start_game() loads the selected level each match, falling back to
+        // the generated grid if the file is missing.
 
         // Bricks and ball spawn fresh on every `start_game()`. Build the
         // deforming grid backdrop now so it exists before the first match.
@@ -63,7 +63,7 @@ impl Game for BreakoutGame {
 
         match self.state.clone() {
             GameState::TitleScreen { selection } => self.update_title_input(ctx, selection),
-            GameState::ChaosSelect { selection } => self.update_chaos_input(ctx, selection),
+            GameState::LevelSelect { selection } => self.update_level_select_input(ctx, selection),
             GameState::Achievements => self.update_achievements_input(ctx),
             _ => self.update_gameplay(ctx),
         }

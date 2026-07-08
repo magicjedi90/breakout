@@ -7,7 +7,7 @@ impl BreakoutGame {
     pub(crate) fn draw_ui(&self, ctx: &mut GameContext) {
         match &self.state {
             GameState::TitleScreen { selection } => self.draw_title(ctx, *selection),
-            GameState::ChaosSelect { selection } => self.draw_chaos(ctx, *selection),
+            GameState::LevelSelect { selection } => self.draw_level_select(ctx, *selection),
             GameState::Achievements => self.draw_achievements(ctx),
             _ => self.draw_gameplay(ctx),
         }
@@ -28,26 +28,27 @@ impl BreakoutGame {
         ctx.ui.label_centered("SPACE to confirm", Vec2::new(cx, 424.0));
     }
 
-    fn draw_chaos(&self, ctx: &mut GameContext, selection: u8) {
+    fn draw_level_select(&self, ctx: &mut GameContext, selection: u8) {
         let cx = ctx.window_size.x / 2.0;
 
-        ctx.ui.label_centered("SELECT CHAOS MODE", Vec2::new(cx, 130.0));
+        ctx.ui.label_centered("SELECT LEVEL", Vec2::new(cx, 130.0));
 
-        for (i, mode) in ChaosMode::ALL.iter().enumerate() {
+        for (i, level) in crate::levels::LEVELS.iter().enumerate() {
             let prefix = if i as u8 == selection { "> " } else { "  " };
-            ctx.ui.label_centered(
-                &format!("{prefix}{}", mode.label()),
+            // Each entry glows in its chaos mode's banner color.
+            let c = ChaosTheme::for_mode(level.mode).banner_color;
+            ctx.ui.label_centered_styled(
+                &format!("{prefix}{} - {}", level.title, level.mode.label()),
                 Vec2::new(cx, 200.0 + i as f32 * 30.0),
+                Color::new(c.x, c.y, c.z, c.w),
+                16.0,
             );
         }
 
-        let hint = match ChaosMode::ALL[selection as usize] {
-            ChaosMode::Normal => "Classic Breakout.",
-            ChaosMode::Insane => "Ball speeds up on every paddle hit.",
-            ChaosMode::Ridiculous => "Every serve launches two balls.",
-            ChaosMode::Insiculous => "Two balls AND they speed up.",
-        };
-        ctx.ui.label_centered(hint, Vec2::new(cx, 360.0));
+        ctx.ui.label_centered(
+            crate::levels::level_hint(selection as usize),
+            Vec2::new(cx, 360.0),
+        );
         ctx.ui.label_centered("SPACE to confirm, ESC to go back", Vec2::new(cx, 400.0));
     }
 
@@ -117,6 +118,16 @@ impl BreakoutGame {
 
         if self.combo >= 3 {
             ctx.ui.label_centered(&format!("COMBO x{}", self.combo), Vec2::new(cx, 48.0));
+        }
+
+        if self.wrecking_active() {
+            let c = crate::constants::WRECKING_BALL_COLOR;
+            ctx.ui.label_centered_styled(
+                &format!("WRECKING {:.1}s", self.wrecking.remaining()),
+                Vec2::new(cx, 72.0),
+                Color::new(c.x, c.y, c.z, c.w),
+                16.0,
+            );
         }
 
         match &self.state {

@@ -13,7 +13,7 @@ fn entity_x(world: &World, entity: EntityId) -> f32 {
 }
 
 /// Simple hash for pseudo-random values from frame count.
-fn hash_f32(seed: u32) -> f32 {
+pub(crate) fn hash_f32(seed: u32) -> f32 {
     (seed.wrapping_mul(2654435761) >> 8) as f32 / 16777216.0
 }
 
@@ -52,6 +52,22 @@ pub(crate) fn brick_bounce_velocity(ball_pos: Vec2, vel: Vec2, brick_pos: Vec2) 
     v
 }
 
+/// What a brick hit does, given the brick's remaining hits and whether the
+/// wrecking ball is active (wrecking one-hit-kills anything).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BrickHitOutcome {
+    Destroyed,
+    Damaged { hits_left: u32 },
+}
+
+pub(crate) fn brick_hit_outcome(hits_left: u32, wrecking_active: bool) -> BrickHitOutcome {
+    if wrecking_active || hits_left <= 1 {
+        BrickHitOutcome::Destroyed
+    } else {
+        BrickHitOutcome::Damaged { hits_left: hits_left - 1 }
+    }
+}
+
 /// Re-aim `dir` if it is too horizontal, preserving its left/right and
 /// up/down senses. Keeps the ball from shuttling between the side walls.
 pub(crate) fn enforce_min_vertical(dir: Vec2) -> Vec2 {
@@ -88,6 +104,10 @@ impl BreakoutGame {
         self.maintain_all_ball_velocities();
         self.check_paddle_hits(ctx, &collisions, paddle);
         self.check_brick_hits(ctx, &collisions);
+        self.check_pickup_catches(ctx, &collisions, paddle);
+        self.despawn_missed_pickups(ctx, &collisions);
+        self.update_wrecking(ctx);
+        self.pulse_drop_bricks(ctx.world);
         self.check_ball_loss(ctx, &collisions);
         self.check_win_condition(ctx);
 
@@ -262,65 +282,105 @@ impl BreakoutGame {
         }
     }
 
-    /// Destroy bricks the balls hit this frame, score them, and grow the
-    /// volley combo.
+    /// Resolve brick hits: armored bricks take damage (rapier reflects the
+    /// ball naturally — the brick survives, so its contact impulse lands);
+    /// destroyed bricks score, grow the combo, and may drop a pickup.
     fn check_brick_hits(&mut self, ctx: &mut GameContext, collisions: &[CollisionData]) {
         let all_balls = self.all_balls();
 
-        let mut destroyed: Vec<usize> = Vec::new();
+        let mut hit: Vec<usize> = Vec::new();
         for collision in collisions {
             if !collision.event.started { continue; }
             for (i, brick) in self.bricks.iter().enumerate() {
                 if all_balls.iter().any(|&b| collision.event.involves(b, brick.entity)) {
-                    destroyed.push(i);
+                    hit.push(i);
                 }
             }
         }
         // A brick can appear once per ball that touched it this frame —
-        // dedup so it only scores once. Ascending order for reverse removal.
-        destroyed.sort_unstable();
-        destroyed.dedup();
-        if destroyed.is_empty() { return; }
+        // dedup so it only takes one hit. Ascending order for reverse removal.
+        hit.sort_unstable();
+        hit.dedup();
+        if hit.is_empty() { return; }
 
+        let wrecking_active = self.wrecking_active();
         let theme = ChaosTheme::for_mode(self.chaos_mode);
-        for &i in destroyed.iter().rev() {
-            let brick = self.bricks.remove(i);
-            self.score += brick.value;
-            self.combo += 1;
-            if self.combo == COMBO_TARGET {
-                ctx.achievements.unlock(crate::achievements::COMBO_VOLLEY);
-            }
-
-            if let Some(pos) = entity_position(ctx.world, brick.entity) {
-                // Destroying the brick cancels rapier's contact impulse, so
-                // reflect every ball that hit it ourselves (see
-                // brick_bounce_velocity for why corner/gap hits need this).
-                for &ball in all_balls.iter() {
-                    let hit_this = collisions.iter()
-                        .any(|c| c.event.started && c.event.involves(ball, brick.entity));
-                    if !hit_this { continue; }
-                    if let (Some(ball_pos), Some((vel, _))) =
-                        (entity_position(ctx.world, ball), self.physics.get_body_velocity(ball))
-                    {
-                        let new_vel = brick_bounce_velocity(ball_pos, vel, pos);
-                        if new_vel != vel {
-                            self.physics.set_velocity(ball, new_vel, 0.0);
-                        }
+        // Descending order: removals at index i never shift lower indices.
+        for &i in hit.iter().rev() {
+            match brick_hit_outcome(self.bricks[i].hits_left, wrecking_active) {
+                BrickHitOutcome::Damaged { hits_left } => {
+                    self.bricks[i].hits_left = hits_left;
+                    let entity = self.bricks[i].entity;
+                    // Visible battle damage: dim the tint and the glow.
+                    if let Some(s) = ctx.world.get_mut::<Sprite>(entity) {
+                        s.color.x *= 0.65;
+                        s.color.y *= 0.65;
+                        s.color.z *= 0.65;
+                        s.emissive *= 0.5;
+                    }
+                    if let Some(pos) = entity_position(ctx.world, entity) {
+                        ctx.particles.spawn_burst(
+                            pos,
+                            &effects::armor_hit_burst(self.bricks[i].color, &theme, self.tex_id),
+                        );
                     }
                 }
-
-                ctx.particles.spawn_burst(pos, &effects::brick_burst(brick.color, &theme, self.tex_id));
-                if let Some(grid) = self.grid.as_mut() {
-                    grid.apply_impulse(&GridImpulse::Radial {
-                        position: pos,
-                        strength: 260.0,
-                        radius: 90.0,
-                        attractive: false,
-                    });
+                BrickHitOutcome::Destroyed => {
+                    let brick = self.bricks.remove(i);
+                    self.score += brick.value;
+                    self.combo += 1;
+                    if self.combo == COMBO_TARGET {
+                        ctx.achievements.unlock(crate::achievements::COMBO_VOLLEY);
+                    }
+                    self.destroy_brick_entity(ctx, collisions, &all_balls, &brick, &theme);
                 }
             }
-            self.physics.destroy_entity(ctx.world, brick.entity);
         }
+    }
+
+    /// Tear down a destroyed brick: reflect the balls that hit it, burst
+    /// particles, kick the grid, drop its pickup, and remove the entity.
+    fn destroy_brick_entity(
+        &mut self,
+        ctx: &mut GameContext,
+        collisions: &[CollisionData],
+        all_balls: &[EntityId],
+        brick: &Brick,
+        theme: &ChaosTheme,
+    ) {
+        if let Some(pos) = entity_position(ctx.world, brick.entity) {
+            // Destroying the brick cancels rapier's contact impulse, so
+            // reflect every ball that hit it ourselves (see
+            // brick_bounce_velocity for why corner/gap hits need this).
+            for &ball in all_balls {
+                let hit_this = collisions.iter()
+                    .any(|c| c.event.started && c.event.involves(ball, brick.entity));
+                if !hit_this { continue; }
+                if let (Some(ball_pos), Some((vel, _))) =
+                    (entity_position(ctx.world, ball), self.physics.get_body_velocity(ball))
+                {
+                    let new_vel = brick_bounce_velocity(ball_pos, vel, pos);
+                    if new_vel != vel {
+                        self.physics.set_velocity(ball, new_vel, 0.0);
+                    }
+                }
+            }
+
+            ctx.particles.spawn_burst(pos, &effects::brick_burst(brick.color, theme, self.tex_id));
+            if let Some(grid) = self.grid.as_mut() {
+                grid.apply_impulse(&GridImpulse::Radial {
+                    position: pos,
+                    strength: 260.0,
+                    radius: 90.0,
+                    attractive: false,
+                });
+            }
+
+            if let Some(kind) = brick.drop {
+                self.spawn_pickup(ctx.world, kind, pos);
+            }
+        }
+        self.physics.destroy_entity(ctx.world, brick.entity);
     }
 
     /// Remove balls that fell past the paddle (sensor hit or escaped the
@@ -368,11 +428,14 @@ impl BreakoutGame {
 
         if self.ball.is_some() { return; }
 
-        // All balls gone — spend a life.
+        // All balls gone — spend a life. Wrecking dies with the volley
+        // (consistent with the speed_mult reset below).
         self.lives = self.lives.saturating_sub(1);
         self.combo = 0;
         self.speed_mult = 1.0;
+        self.wrecking.stop();
         if self.lives == 0 {
+            self.destroy_all_pickups(ctx.world);
             self.state = GameState::GameOver { won: false };
             return;
         }
@@ -391,6 +454,8 @@ impl BreakoutGame {
         if !self.bricks.is_empty() { return; }
 
         self.destroy_all_balls(ctx.world);
+        self.destroy_all_pickups(ctx.world);
+        self.wrecking.stop();
         self.unlock_win_achievements(ctx);
         self.state = GameState::GameOver { won: true };
     }
@@ -406,18 +471,21 @@ impl BreakoutGame {
 
     fn reset_to_title(&mut self, world: &mut World) {
         self.destroy_all_balls(world);
+        self.destroy_all_pickups(world);
+        self.wrecking.stop();
         self.state = GameState::TitleScreen { selection: 0 };
     }
 
     pub(crate) fn update_entity_visibility(&self, ctx: &mut GameContext) {
         let visible = !matches!(
             self.state,
-            GameState::TitleScreen { .. } | GameState::ChaosSelect { .. } | GameState::Achievements
+            GameState::TitleScreen { .. } | GameState::LevelSelect { .. } | GameState::Achievements
         );
         let entities = [self.paddle, self.ball].into_iter().flatten()
             .chain(self.extra_balls.iter().copied())
             .chain(self.walls.iter().copied())
-            .chain(self.bricks.iter().map(|b| b.entity));
+            .chain(self.bricks.iter().map(|b| b.entity))
+            .chain(self.pickups.entities().collect::<Vec<_>>());
         for entity in entities {
             if let Some(sprite) = ctx.world.get_mut::<Sprite>(entity) {
                 sprite.visible = visible;

@@ -82,7 +82,7 @@ pub(crate) fn spawn_bricks(world: &mut World, tex: u32) -> Vec<Brick> {
                     .with_friction(0.0)
                     .with_restitution(1.0))
                 .id();
-            bricks.push(Brick { entity, value: brick_value(row), color });
+            bricks.push(Brick { entity, value: brick_value(row), color, hits_left: 1, drop: None });
         }
     }
     bricks

@@ -8,6 +8,12 @@
 // - Entity names follow "brick_r{row}_c{col}" — the row digit drives the
 //   score payout (see levels::brick_row_from_name), so keep names intact
 //   when editing. Bricks without a parseable row still score the minimum.
+// - Special bricks carry an EntityTag with '+'-joined tokens:
+//     armored{N}      N total hits to destroy (2..=9)
+//     drop_multiball  drops a multiball pickup when destroyed
+//     drop_wrecking   drops a 10s wrecking-ball pickup
+//     drop_insiculous drops a pickup granting BOTH effects
+//   e.g. EntityTag(tag: "armored2+drop_wrecking"). No tag = plain brick.
 // - Collider half-extents are absolute pixels; sprite size comes from
 //   Transform2D scale x 80 (RENDER_UNIT). Keep them in sync: scale =
 //   (width/80, height/80) for a (width/2, height/2) collider.
@@ -97,7 +103,7 @@ SceneData(
         EntityData(name: Some("brick_r2_c1"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (-259.0, 184.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r2_c2"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (-185.0, 184.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r2_c3"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (-111.0, 184.0), scale: (0.875, 0.3))]),
-        EntityData(name: Some("brick_r2_c4"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (-37.0, 184.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r2_c4"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (-37.0, 184.0), scale: (0.875, 0.3)), Sprite(texture: "#white", color: (0.35, 0.9, 1.0, 1.0), emissive: 1.2), EntityTag(tag: "drop_multiball")]),
         EntityData(name: Some("brick_r2_c5"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (37.0, 184.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r2_c6"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (111.0, 184.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r2_c7"), prefab: Some("BrickRow2"), overrides: [Transform2D(position: (185.0, 184.0), scale: (0.875, 0.3))]),
@@ -127,8 +133,8 @@ SceneData(
         EntityData(name: Some("brick_r5_c1"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (-259.0, 100.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r5_c2"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (-185.0, 100.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r5_c3"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (-111.0, 100.0), scale: (0.875, 0.3))]),
-        EntityData(name: Some("brick_r5_c4"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (-37.0, 100.0), scale: (0.875, 0.3))]),
-        EntityData(name: Some("brick_r5_c5"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (37.0, 100.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r5_c4"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (-37.0, 100.0), scale: (0.875, 0.3)), Sprite(texture: "#white", color: (0.55, 0.58, 0.62, 1.0), emissive: 0.35), EntityTag(tag: "armored2")]),
+        EntityData(name: Some("brick_r5_c5"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (37.0, 100.0), scale: (0.875, 0.3)), Sprite(texture: "#white", color: (0.55, 0.58, 0.62, 1.0), emissive: 0.35), EntityTag(tag: "armored2")]),
         EntityData(name: Some("brick_r5_c6"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (111.0, 100.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r5_c7"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (185.0, 100.0), scale: (0.875, 0.3))]),
         EntityData(name: Some("brick_r5_c8"), prefab: Some("BrickRow5"), overrides: [Transform2D(position: (259.0, 100.0), scale: (0.875, 0.3))]),

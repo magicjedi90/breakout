@@ -14,7 +14,7 @@ use engine_core::prelude::*;
 
 use crate::constants::{BRICK_ROWS, BRICK_VALUE_STEP};
 use crate::spawning::brick_value;
-use crate::types::Brick;
+use crate::types::{Brick, PickupKind};
 
 /// Directory that holds the game's `assets/` and `saves/` folders.
 ///
@@ -32,19 +32,51 @@ pub(crate) fn game_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Absolute path of the level scene file.
+/// A selectable level: display name, scene file, and the chaos mode it
+/// plays in. The layouts live in the scene files (editor-authorable); this
+/// table is deliberately a Rust const — breakout has no serde/ron deps.
+pub(crate) struct LevelDef {
+    pub(crate) title: &'static str,
+    pub(crate) scene_file: &'static str,
+    pub(crate) mode: ChaosMode,
+}
+
+/// The level roster shown on the level-select screen, one per chaos mode.
+pub(crate) const LEVELS: [LevelDef; 4] = [
+    LevelDef { title: "CLASSIC", scene_file: "level1.scene.ron", mode: ChaosMode::Normal },
+    LevelDef { title: "THE VAULT", scene_file: "level2.scene.ron", mode: ChaosMode::Insane },
+    LevelDef { title: "PINATA", scene_file: "level3.scene.ron", mode: ChaosMode::Ridiculous },
+    LevelDef { title: "THE GAUNTLET", scene_file: "level4.scene.ron", mode: ChaosMode::Insiculous },
+];
+
+/// One-line flavor text per level, shown under the roster.
+pub(crate) fn level_hint(index: usize) -> &'static str {
+    match index {
+        0 => "The classic wall. A gentle taste of armor.",
+        1 => "A fortress of steel. Ball speeds up per paddle hit.",
+        2 => "Crack it open - it rains power-ups. Two-ball serves.",
+        3 => "Armor, chaos, and everything at once.",
+        _ => "",
+    }
+}
+
+/// Absolute path of a level scene file.
 ///
 /// `SceneLoader::load_from_file` takes raw filesystem paths (it does not go
 /// through `GameConfig.asset_base_path`), so the path is anchored explicitly.
-pub(crate) fn level_scene_path() -> PathBuf {
-    game_root().join("assets/scenes/level1.scene.ron")
+pub(crate) fn level_scene_path(scene_file: &str) -> PathBuf {
+    game_root().join("assets/scenes").join(scene_file)
 }
 
-/// Parse the level scene from disk. Returns `None` (with a console warning)
+/// Parse a level's scene from disk. Returns `None` (with a console warning)
 /// if the file is missing or malformed — the game then uses the generated
 /// grid instead of failing to start.
-pub(crate) fn load_level_data() -> Option<SceneData> {
-    let path = level_scene_path();
+pub(crate) fn load_level_data(index: usize) -> Option<SceneData> {
+    let Some(def) = LEVELS.get(index) else {
+        eprintln!("breakout: level index {index} out of range; using generated brick grid");
+        return None;
+    };
+    let path = level_scene_path(def.scene_file);
     match SceneLoader::load_from_file(&path) {
         Ok(data) => Some(data),
         Err(e) => {
@@ -74,10 +106,56 @@ fn brick_value_from_name(name: &str) -> u32 {
     }
 }
 
+/// What a brick's `EntityTag` says about it. Untagged bricks get the
+/// defaults: one hit, no drop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BrickSpec {
+    pub(crate) hits: u32,
+    pub(crate) drop: Option<PickupKind>,
+}
+
+impl Default for BrickSpec {
+    fn default() -> Self {
+        Self { hits: 1, drop: None }
+    }
+}
+
+/// Parse a brick's `EntityTag` string: tokens joined by `+`.
+///
+/// - `armored{N}` — N total hits to destroy (2..=9)
+/// - `drop_multiball` / `drop_wrecking` / `drop_insiculous` — pickup dropped
+///
+/// Unknown or malformed tokens warn and are skipped (graceful degradation,
+/// same philosophy as `brick_value_from_name`); duplicates: last wins.
+pub(crate) fn parse_brick_tag(tag: &str) -> BrickSpec {
+    let mut spec = BrickSpec::default();
+    for token in tag.split('+') {
+        let token = token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        if let Some(n) = token.strip_prefix("armored") {
+            match n.parse::<u32>() {
+                Ok(hits) if (2..=9).contains(&hits) => spec.hits = hits,
+                _ => eprintln!("breakout: ignoring malformed armor token '{token}'"),
+            }
+        } else {
+            match token {
+                "drop_multiball" => spec.drop = Some(PickupKind::Multiball),
+                "drop_wrecking" => spec.drop = Some(PickupKind::Wrecking),
+                "drop_insiculous" => spec.drop = Some(PickupKind::Insiculous),
+                _ => eprintln!("breakout: ignoring unknown brick tag token '{token}'"),
+            }
+        }
+    }
+    spec
+}
+
 /// Build the game's `Brick` bookkeeping from a scene instance's named
 /// entities: every entity named `brick*` becomes a brick. The particle-burst
 /// color is read from the entity's live `Sprite`, so bricks retinted in the
-/// editor keep matching effects.
+/// editor keep matching effects; armor/drop behavior comes from the
+/// entity's `EntityTag` (see `parse_brick_tag`).
 pub(crate) fn bricks_from_names(
     named_entities: &HashMap<String, EntityId>,
     world: &World,
@@ -85,13 +163,21 @@ pub(crate) fn bricks_from_names(
     named_entities
         .iter()
         .filter(|(name, _)| name.starts_with("brick"))
-        .map(|(name, &entity)| Brick {
-            entity,
-            value: brick_value_from_name(name),
-            color: world
-                .get::<Sprite>(entity)
-                .map(|s| s.color)
-                .unwrap_or(Vec4::ONE),
+        .map(|(name, &entity)| {
+            let spec = world
+                .get::<EntityTag>(entity)
+                .map(|t| parse_brick_tag(&t.0))
+                .unwrap_or_default();
+            Brick {
+                entity,
+                value: brick_value_from_name(name),
+                color: world
+                    .get::<Sprite>(entity)
+                    .map(|s| s.color)
+                    .unwrap_or(Vec4::ONE),
+                hits_left: spec.hits,
+                drop: spec.drop,
+            }
         })
         .collect()
 }
@@ -109,7 +195,9 @@ pub(crate) fn spawn_bricks_from_scene(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{BRICK_COLS, BRICK_GAP, BRICK_H, BRICK_W, RENDER_UNIT};
+    use crate::constants::{
+        BRICK_COLS, BRICK_GAP, BRICK_H, BRICK_W, PADDLE_Y, PLAYFIELD_HALF_W, RENDER_UNIT,
+    };
     use crate::spawning::{brick_x, brick_y};
     use engine_core::prelude::ComponentData;
 
@@ -140,10 +228,75 @@ mod tests {
         result
     }
 
+    /// Load a roster level via a CARGO_MANIFEST_DIR-anchored path (tests
+    /// can't rely on exe-dir anchoring).
+    fn load_roster_level(index: usize) -> SceneData {
+        let def = &LEVELS[index];
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets/scenes")
+            .join(def.scene_file);
+        SceneLoader::load_from_file(&path)
+            .unwrap_or_else(|e| panic!("{} should parse: {e}", def.scene_file))
+    }
+
     #[test]
     fn shipped_level_parses() {
         let scene = load_scene();
         assert_eq!(scene.name, "Breakout Level 1");
+    }
+
+    #[test]
+    fn every_roster_level_parses_with_valid_bricks() {
+        assert_eq!(LEVELS.len(), ChaosMode::ALL.len(), "one level per chaos mode");
+        for (i, def) in LEVELS.iter().enumerate() {
+            assert_eq!(def.mode, ChaosMode::ALL[i], "roster order follows ChaosMode::ALL");
+            assert!(!level_hint(i).is_empty());
+
+            let scene = load_roster_level(i);
+            let brick_names: Vec<&str> = scene
+                .entities
+                .iter()
+                .filter_map(|e| e.name.as_deref())
+                .filter(|n| n.starts_with("brick"))
+                .collect();
+            assert!(!brick_names.is_empty(), "{} has no bricks", def.scene_file);
+            for name in &brick_names {
+                brick_row_from_name(name)
+                    .unwrap_or_else(|| panic!("unparsable brick name {name} in {}", def.scene_file));
+            }
+        }
+    }
+
+    #[test]
+    fn every_roster_level_fits_the_playfield() {
+        for (i, def) in LEVELS.iter().enumerate() {
+            let scene = load_roster_level(i);
+            for entity in &scene.entities {
+                let name = entity.name.as_deref().unwrap_or("<unnamed>");
+                let (pos, scale) = merged_components(&scene, entity)
+                    .into_iter()
+                    .find_map(|c| match c {
+                        ComponentData::Transform2D { position, scale, .. } => {
+                            Some((position, scale))
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("{name} in {} has no Transform2D", def.scene_file));
+
+                let half_w = scale.0 * RENDER_UNIT / 2.0;
+                assert!(
+                    pos.0.abs() + half_w < PLAYFIELD_HALF_W,
+                    "{name} in {} pokes past a side wall",
+                    def.scene_file
+                );
+                let bottom = pos.1 - scale.1 * RENDER_UNIT / 2.0;
+                assert!(
+                    bottom > PADDLE_Y + 100.0,
+                    "{name} in {} sits too close to the paddle",
+                    def.scene_file
+                );
+            }
+        }
     }
 
     #[test]
@@ -221,14 +374,112 @@ mod tests {
         let total_width = BRICK_COLS as f32 * BRICK_W + (BRICK_COLS as f32 - 1.0) * BRICK_GAP;
         assert!(total_width < crate::constants::WIN_W - 2.0 * crate::constants::WALL_THICKNESS);
         for entity in &scene.entities {
-            let emissive = merged_components(&scene, entity)
-                .into_iter()
+            let components = merged_components(&scene, entity);
+            let emissive = components
+                .iter()
                 .find_map(|c| match c {
-                    ComponentData::Sprite { emissive, .. } => Some(emissive),
+                    ComponentData::Sprite { emissive, .. } => Some(*emissive),
                     _ => None,
                 })
                 .expect("brick has a sprite");
-            assert_eq!(emissive, 0.9);
+            let tagged = components
+                .iter()
+                .any(|c| matches!(c, ComponentData::EntityTag { .. }));
+            if tagged {
+                // Special bricks style themselves (armor dims, drops glow).
+                assert!(emissive > 0.0);
+            } else {
+                assert_eq!(emissive, 0.9);
+            }
+        }
+    }
+
+    #[test]
+    fn parse_brick_tag_grammar_table() {
+        let d = BrickSpec::default();
+        assert_eq!(d, BrickSpec { hits: 1, drop: None });
+
+        assert_eq!(parse_brick_tag("armored2"), BrickSpec { hits: 2, drop: None });
+        assert_eq!(parse_brick_tag("armored9"), BrickSpec { hits: 9, drop: None });
+        assert_eq!(
+            parse_brick_tag("drop_multiball"),
+            BrickSpec { hits: 1, drop: Some(PickupKind::Multiball) }
+        );
+        assert_eq!(
+            parse_brick_tag("drop_wrecking"),
+            BrickSpec { hits: 1, drop: Some(PickupKind::Wrecking) }
+        );
+        assert_eq!(
+            parse_brick_tag("drop_insiculous"),
+            BrickSpec { hits: 1, drop: Some(PickupKind::Insiculous) }
+        );
+        assert_eq!(
+            parse_brick_tag("armored2+drop_wrecking"),
+            BrickSpec { hits: 2, drop: Some(PickupKind::Wrecking) }
+        );
+        // Token order doesn't matter; whitespace tolerated
+        assert_eq!(
+            parse_brick_tag(" drop_wrecking + armored3 "),
+            BrickSpec { hits: 3, drop: Some(PickupKind::Wrecking) }
+        );
+        // Duplicates: last wins
+        assert_eq!(
+            parse_brick_tag("armored2+armored3"),
+            BrickSpec { hits: 3, drop: None }
+        );
+        // Unknown/malformed tokens degrade to defaults, never panic
+        assert_eq!(parse_brick_tag(""), d);
+        assert_eq!(parse_brick_tag("bogus"), d);
+        assert_eq!(parse_brick_tag("armored1"), d, "1-hit armor is not armor");
+        assert_eq!(parse_brick_tag("armored99"), d, "out-of-range armor rejected");
+        assert_eq!(parse_brick_tag("armoredX"), d);
+        assert_eq!(
+            parse_brick_tag("bogus+drop_multiball"),
+            BrickSpec { hits: 1, drop: Some(PickupKind::Multiball) },
+            "unknown tokens are skipped, not fatal"
+        );
+    }
+
+    /// Every EntityTag authored in a roster level must parse to a meaningful
+    /// spec — a tag that parses to the plain-brick default is a typo.
+    #[test]
+    fn every_roster_level_tag_is_meaningful() {
+        let mut tagged_total = 0;
+        for (i, def) in LEVELS.iter().enumerate() {
+            let scene = load_roster_level(i);
+            for entity in &scene.entities {
+                let name = entity.name.as_deref().unwrap_or("<unnamed>");
+                for c in merged_components(&scene, entity) {
+                    if let ComponentData::EntityTag { tag } = c {
+                        assert_ne!(
+                            parse_brick_tag(&tag),
+                            BrickSpec::default(),
+                            "tag '{tag}' on {name} in {} means nothing",
+                            def.scene_file
+                        );
+                        tagged_total += 1;
+                    }
+                }
+            }
+        }
+        assert!(tagged_total > 20, "expected plenty of special bricks, got {tagged_total}");
+    }
+
+    /// Levels 3 and 4 must actually rain power-ups (drop-brick counts > 0).
+    #[test]
+    fn prize_levels_have_drop_bricks() {
+        for i in [2usize, 3] {
+            let scene = load_roster_level(i);
+            let drops = scene
+                .entities
+                .iter()
+                .flat_map(|e| merged_components(&scene, e))
+                .filter_map(|c| match c {
+                    ComponentData::EntityTag { tag } => parse_brick_tag(&tag).drop,
+                    _ => None,
+                })
+                .count();
+            assert!(drops >= 4, "{} has only {drops} drop bricks", LEVELS[i].scene_file);
         }
     }
 
@@ -270,5 +521,26 @@ mod tests {
         assert_eq!(bricks[0].entity, brick);
         assert_eq!(bricks[0].value, brick_value(0));
         assert_eq!(bricks[0].color, red);
+        // Untagged brick gets the plain defaults
+        assert_eq!(bricks[0].hits_left, 1);
+        assert_eq!(bricks[0].drop, None);
+    }
+
+    #[test]
+    fn bricks_from_names_reads_entity_tags() {
+        let mut world = World::new();
+        let mut named = HashMap::new();
+
+        let brick = world.create_entity();
+        world.add_component(&brick, Sprite::new(0)).ok();
+        world
+            .add_component(&brick, EntityTag::new("armored3+drop_insiculous"))
+            .ok();
+        named.insert("brick_r1_c1".to_string(), brick);
+
+        let bricks = bricks_from_names(&named, &world);
+        assert_eq!(bricks.len(), 1);
+        assert_eq!(bricks[0].hits_left, 3);
+        assert_eq!(bricks[0].drop, Some(PickupKind::Insiculous));
     }
 }

@@ -3,7 +3,7 @@ use engine_core::prelude::*;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GameState {
     TitleScreen { selection: u8 },
-    ChaosSelect { selection: u8 },
+    LevelSelect { selection: u8 },
     Achievements,
     /// Ball rests on the paddle waiting for launch.
     Serving,
@@ -11,11 +11,28 @@ pub(crate) enum GameState {
     GameOver { won: bool },
 }
 
-/// A live brick: its entity plus the score it pays out when destroyed.
+/// A live brick: its entity plus the score it pays out when destroyed,
+/// remaining hits (armored bricks take several), and the pickup it drops.
 pub(crate) struct Brick {
     pub(crate) entity: EntityId,
     pub(crate) value: u32,
     pub(crate) color: Vec4,
+    /// Hits left to destroy it (1 = plain brick).
+    pub(crate) hits_left: u32,
+    /// Pickup dropped when destroyed, if any.
+    pub(crate) drop: Option<PickupKind>,
+}
+
+/// Power-up pickups dropped by special bricks (the insiculous trio: two
+/// base powers plus one that grants both).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PickupKind {
+    /// Grants an extra ball.
+    Multiball,
+    /// All balls one-hit-kill any brick for a while.
+    Wrecking,
+    /// Both at once.
+    Insiculous,
 }
 
 pub(crate) struct BreakoutGame {
@@ -25,9 +42,9 @@ pub(crate) struct BreakoutGame {
     pub(crate) ball: Option<EntityId>,
     pub(crate) extra_balls: Vec<EntityId>,
     pub(crate) bricks: Vec<Brick>,
-    /// Parsed level scene (brick layout); re-instantiated every match.
-    /// `None` means the scene file was missing — use the generated grid.
-    pub(crate) level: Option<SceneData>,
+    /// Index into `levels::LEVELS` of the level being played. The scene is
+    /// loaded fresh on every match start (missing file → generated grid).
+    pub(crate) selected_level: usize,
     pub(crate) walls: Vec<EntityId>,
     pub(crate) bottom_sensor: Option<EntityId>,
     pub(crate) background: Option<EntityId>,
@@ -41,6 +58,11 @@ pub(crate) struct BreakoutGame {
     pub(crate) state: GameState,
     pub(crate) chaos_mode: ChaosMode,
     pub(crate) frame_count: u32,
+
+    /// Falling power-up pickups currently in flight (engine-tracked).
+    pub(crate) pickups: Pickups<PickupKind>,
+    /// Wrecking-ball countdown; while active every ball one-hit-kills.
+    pub(crate) wrecking: EffectTimer,
 
     /// Global ball speed multiplier. Insane mode grows it on every paddle
     /// hit; reset on life loss and at match start.
@@ -62,7 +84,7 @@ impl Default for BreakoutGame {
             ball: None,
             extra_balls: Vec::new(),
             bricks: Vec::new(),
-            level: None,
+            selected_level: 0,
             walls: Vec::new(),
             bottom_sensor: None,
             background: None,
@@ -73,6 +95,8 @@ impl Default for BreakoutGame {
             state: GameState::TitleScreen { selection: 0 },
             chaos_mode: ChaosMode::Normal,
             frame_count: 0,
+            pickups: Pickups::new(),
+            wrecking: EffectTimer::default(),
             speed_mult: 1.0,
             combo: 0,
             grid: None,

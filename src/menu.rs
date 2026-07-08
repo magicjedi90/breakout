@@ -33,7 +33,7 @@ impl BreakoutGame {
 
         if confirm {
             match selection {
-                0 => self.state = GameState::ChaosSelect { selection: 0 },
+                0 => self.state = GameState::LevelSelect { selection: 0 },
                 _ => self.state = GameState::Achievements,
             }
         }
@@ -48,16 +48,19 @@ impl BreakoutGame {
         }
     }
 
-    pub(crate) fn update_chaos_input(&mut self, ctx: &mut GameContext, selection: u8) {
+    pub(crate) fn update_level_select_input(&mut self, ctx: &mut GameContext, selection: u8) {
         let (up, down, confirm, back) = nav_keys(ctx);
-        let count = ChaosMode::ALL.len() as u8;
+        let count = crate::levels::LEVELS.len() as u8;
         let selection = menu_navigate(selection, count, up, down);
-        self.state = GameState::ChaosSelect { selection };
+        self.state = GameState::LevelSelect { selection };
 
         if back {
             self.state = GameState::TitleScreen { selection: 0 };
         } else if confirm {
-            self.chaos_mode = ChaosMode::ALL[selection as usize];
+            let index = selection as usize;
+            self.selected_level = index;
+            // Chaos mode is a property of the level now, not a menu choice.
+            self.chaos_mode = crate::levels::LEVELS[index].mode;
             // Mirror the runtime selection into the engine context so any
             // code reading ctx.chaos_mode agrees with self.chaos_mode.
             ctx.chaos_mode = self.chaos_mode;
@@ -74,6 +77,8 @@ impl BreakoutGame {
         self.combo = 0;
 
         self.destroy_all_balls(ctx.world);
+        self.destroy_all_pickups(ctx.world);
+        self.wrecking.stop();
         for brick in self.bricks.drain(..) {
             self.physics.destroy_entity(ctx.world, brick.entity);
         }
@@ -89,12 +94,12 @@ impl BreakoutGame {
         self.state = GameState::Serving;
     }
 
-    /// Spawn the brick grid from the level scene, falling back to the
-    /// generated grid when the scene is missing, broken, or empty — worst
-    /// case is always the classic layout, never a brickless game.
+    /// Spawn the selected level's brick layout from its scene, falling back
+    /// to the generated grid when the scene is missing, broken, or empty —
+    /// worst case is always the classic layout, never a brickless game.
     fn spawn_level_bricks(&mut self, ctx: &mut GameContext) -> Vec<Brick> {
-        if let Some(level) = &self.level {
-            match crate::levels::spawn_bricks_from_scene(level, ctx.world, ctx.assets) {
+        if let Some(level) = crate::levels::load_level_data(self.selected_level) {
+            match crate::levels::spawn_bricks_from_scene(&level, ctx.world, ctx.assets) {
                 Ok(bricks) if !bricks.is_empty() => return bricks,
                 Ok(_) => eprintln!(
                     "breakout: level scene has no bricks; using generated brick grid"

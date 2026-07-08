@@ -1,0 +1,113 @@
+// PINATA — breakout level 3 (Ridiculous mode).
+//
+// Conventions (shared by all breakout levels):
+// - Entity names follow "brick_r{row}_c{col}" — the row digit drives the
+//   score payout; keep names intact when editing.
+// - Special bricks carry an EntityTag with '+'-joined tokens:
+//     armored{N}      N total hits to destroy (2..=9)
+//     drop_multiball  drops a multiball pickup when destroyed
+//     drop_wrecking   drops a 10s wrecking-ball pickup
+//     drop_insiculous drops a pickup granting BOTH effects
+//   e.g. EntityTag(tag: "armored2+drop_wrecking"). No tag = plain brick.
+// - Collider half-extents are absolute pixels; sprite size = scale x 80.
+//   Keep in sync: scale (0.875, 0.3) <-> half_extents (35.0, 12.0).
+// - Prefabs are authoring sugar; the editor's save pipeline flattens them.
+
+SceneData(
+    name: "Breakout Level 3 - PINATA",
+    prefabs: {
+        "Magenta": PrefabData(
+            components: [
+                Transform2D(scale: (0.875, 0.3)),
+                Sprite(texture: "#white", color: (0.9, 0.3, 0.9, 1.0), emissive: 0.9),
+                RigidBody(body_type: Static),
+                Collider(shape: Box(half_extents: (35.0, 12.0)), friction: 0.0, restitution: 1.0),
+            ],
+        ),
+        "Violet": PrefabData(
+            components: [
+                Transform2D(scale: (0.875, 0.3)),
+                Sprite(texture: "#white", color: (0.75, 0.4, 1.0, 1.0), emissive: 0.9),
+                RigidBody(body_type: Static),
+                Collider(shape: Box(half_extents: (35.0, 12.0)), friction: 0.0, restitution: 1.0),
+            ],
+        ),
+        "Pink": PrefabData(
+            components: [
+                Transform2D(scale: (0.875, 0.3)),
+                Sprite(texture: "#white", color: (1.0, 0.4, 0.7, 1.0), emissive: 0.9),
+                RigidBody(body_type: Static),
+                Collider(shape: Box(half_extents: (35.0, 12.0)), friction: 0.0, restitution: 1.0),
+            ],
+        ),
+        "Armor2": PrefabData(
+            components: [
+                Transform2D(scale: (0.875, 0.3)),
+                Sprite(texture: "#white", color: (0.55, 0.58, 0.62, 1.0), emissive: 0.35),
+                RigidBody(body_type: Static),
+                Collider(shape: Box(half_extents: (35.0, 12.0)), friction: 0.0, restitution: 1.0),
+                EntityTag(tag: "armored2"),
+            ],
+        ),
+        "DropMulti": PrefabData(
+            components: [
+                Transform2D(scale: (0.875, 0.3)),
+                Sprite(texture: "#white", color: (0.35, 0.9, 1.0, 1.0), emissive: 1.2),
+                RigidBody(body_type: Static),
+                Collider(shape: Box(half_extents: (35.0, 12.0)), friction: 0.0, restitution: 1.0),
+                EntityTag(tag: "drop_multiball"),
+            ],
+        ),
+        "DropWreck": PrefabData(
+            components: [
+                Transform2D(scale: (0.875, 0.3)),
+                Sprite(texture: "#white", color: (1.0, 0.45, 0.2, 1.0), emissive: 1.2),
+                RigidBody(body_type: Static),
+                Collider(shape: Box(half_extents: (35.0, 12.0)), friction: 0.0, restitution: 1.0),
+                EntityTag(tag: "drop_wrecking"),
+            ],
+        ),
+        "DropInsic": PrefabData(
+            components: [
+                Transform2D(scale: (0.875, 0.3)),
+                Sprite(texture: "#white", color: (0.6, 1.0, 0.35, 1.0), emissive: 1.2),
+                RigidBody(body_type: Static),
+                Collider(shape: Box(half_extents: (35.0, 12.0)), friction: 0.0, restitution: 1.0),
+                EntityTag(tag: "drop_insiculous"),
+            ],
+        ),
+    },
+    entities: [
+        EntityData(name: Some("brick_r0_c0"), prefab: Some("DropMulti"), overrides: [Transform2D(position: (-333.0, 240.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r0_c2"), prefab: Some("Magenta"), overrides: [Transform2D(position: (-185.0, 240.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r0_c4"), prefab: Some("Magenta"), overrides: [Transform2D(position: (-37.0, 240.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r0_c6"), prefab: Some("Magenta"), overrides: [Transform2D(position: (111.0, 240.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r0_c8"), prefab: Some("DropMulti"), overrides: [Transform2D(position: (259.0, 240.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r1_c1"), prefab: Some("DropWreck"), overrides: [Transform2D(position: (-259.0, 212.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r1_c3"), prefab: Some("Violet"), overrides: [Transform2D(position: (-111.0, 212.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r1_c5"), prefab: Some("Violet"), overrides: [Transform2D(position: (37.0, 212.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r1_c7"), prefab: Some("DropWreck"), overrides: [Transform2D(position: (185.0, 212.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r1_c9"), prefab: Some("Violet"), overrides: [Transform2D(position: (333.0, 212.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r2_c0"), prefab: Some("Pink"), overrides: [Transform2D(position: (-333.0, 184.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r2_c2"), prefab: Some("DropMulti"), overrides: [Transform2D(position: (-185.0, 184.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r2_c4"), prefab: Some("Armor2"), overrides: [Transform2D(position: (-37.0, 184.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r2_c6"), prefab: Some("DropMulti"), overrides: [Transform2D(position: (111.0, 184.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r2_c8"), prefab: Some("Pink"), overrides: [Transform2D(position: (259.0, 184.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r3_c1"), prefab: Some("Magenta"), overrides: [Transform2D(position: (-259.0, 156.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r3_c3"), prefab: Some("Armor2"), overrides: [Transform2D(position: (-111.0, 156.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r3_c5"), prefab: Some("Armor2"), overrides: [Transform2D(position: (37.0, 156.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r3_c7"), prefab: Some("Magenta"), overrides: [Transform2D(position: (185.0, 156.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r3_c9"), prefab: Some("Magenta"), overrides: [Transform2D(position: (333.0, 156.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r4_c0"), prefab: Some("DropMulti"), overrides: [Transform2D(position: (-333.0, 128.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r4_c2"), prefab: Some("Violet"), overrides: [Transform2D(position: (-185.0, 128.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r4_c4"), prefab: Some("Armor2"), overrides: [Transform2D(position: (-37.0, 128.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r4_c6"), prefab: Some("Violet"), overrides: [Transform2D(position: (111.0, 128.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r4_c8"), prefab: Some("DropMulti"), overrides: [Transform2D(position: (259.0, 128.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r5_c1"), prefab: Some("Pink"), overrides: [Transform2D(position: (-259.0, 100.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r5_c3"), prefab: Some("Pink"), overrides: [Transform2D(position: (-111.0, 100.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r5_c5"), prefab: Some("DropWreck"), overrides: [Transform2D(position: (37.0, 100.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r5_c7"), prefab: Some("Pink"), overrides: [Transform2D(position: (185.0, 100.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r5_c9"), prefab: Some("Pink"), overrides: [Transform2D(position: (333.0, 100.0), scale: (0.875, 0.3))]),
+        EntityData(name: Some("brick_r3_c4"), prefab: Some("DropInsic"), overrides: [Transform2D(position: (-37.0, 156.0), scale: (0.875, 0.3))]),
+    ],
+)

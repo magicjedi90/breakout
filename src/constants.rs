@@ -45,6 +45,25 @@ pub(crate) const BRICK_TOP_Y: f32 = 240.0;
 /// Points awarded per brick = (rows from the bottom of the grid) * this.
 pub(crate) const BRICK_VALUE_STEP: u32 = 10;
 
+// Falling power-up pickups dropped by special bricks.
+pub(crate) const PICKUP_SIZE: f32 = 18.0;
+pub(crate) const PICKUP_FALL_SPEED: f32 = 180.0;
+/// Wrecking-ball effect length; catching another pickup refreshes it.
+pub(crate) const WRECKING_DURATION: f32 = 10.0;
+/// Cap on simultaneous extra balls (multiball grants beyond it fizzle).
+pub(crate) const MAX_EXTRA_BALLS: usize = 6;
+
+/// Normal ball glow (spawn + wrecking-revert use the same value).
+pub(crate) const BALL_EMISSIVE: f32 = 2.5;
+/// Red-hot look while the wrecking ball is active.
+pub(crate) const WRECKING_BALL_COLOR: Vec4 = Vec4::new(1.0, 0.45, 0.3, 1.0);
+pub(crate) const WRECKING_BALL_EMISSIVE: f32 = 3.5;
+
+// Pickup capsule tints (mirror the brick colors so players learn the map).
+pub(crate) const MULTIBALL_PICKUP_COLOR: Vec4 = Vec4::new(0.35, 0.9, 1.0, 1.0);
+pub(crate) const WRECKING_PICKUP_COLOR: Vec4 = Vec4::new(1.0, 0.45, 0.2, 1.0);
+pub(crate) const INSICULOUS_PICKUP_COLOR: Vec4 = Vec4::new(0.6, 1.0, 0.35, 1.0);
+
 pub(crate) const STARTING_LIVES: u32 = 3;
 /// Bricks destroyed in one volley (without touching the paddle) to unlock
 /// the combo achievement.
