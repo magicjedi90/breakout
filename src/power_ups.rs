@@ -7,10 +7,9 @@
 
 use engine_core::prelude::*;
 
-use crate::chaos_theme::ChaosTheme;
+use crate::chaos_theme::theme_for;
 use crate::constants::*;
 use crate::effects;
-use crate::gameplay::hash_f32;
 use crate::types::*;
 
 /// Capsule tint per pickup kind (mirrors the dropping brick's color).
@@ -87,7 +86,7 @@ impl BreakoutGame {
             return;
         }
 
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         for (kind, _) in caught {
             let (extra_balls, wrecking) = pickup_effects(kind);
             for _ in 0..extra_balls {
@@ -178,11 +177,11 @@ impl BreakoutGame {
     /// Called on effect start/expiry AND on every ball spawn, so nothing
     /// can keep a stale look.
     pub(crate) fn apply_ball_visuals(&self, world: &mut World) {
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         let (color, emissive) = if self.wrecking.active() {
             (WRECKING_BALL_COLOR, WRECKING_BALL_EMISSIVE)
         } else {
-            (theme.ball_color, BALL_EMISSIVE)
+            (theme.accent_color, BALL_EMISSIVE)
         };
         for ball in self.ball.into_iter().chain(self.extra_balls.iter().copied()) {
             if let Some(s) = world.get_mut::<Sprite>(ball) {

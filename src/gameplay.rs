@@ -1,5 +1,5 @@
 use engine_core::prelude::*;
-use crate::chaos_theme::ChaosTheme;
+use crate::chaos_theme::theme_for;
 use crate::constants::*;
 use crate::effects;
 use crate::types::*;
@@ -10,11 +10,6 @@ fn entity_position(world: &World, entity: EntityId) -> Option<Vec2> {
 
 fn entity_x(world: &World, entity: EntityId) -> f32 {
     world.get::<Transform2D>(entity).map(|t| t.position.x).unwrap_or(0.0)
-}
-
-/// Simple hash for pseudo-random values from frame count.
-pub(crate) fn hash_f32(seed: u32) -> f32 {
-    (seed.wrapping_mul(2654435761) >> 8) as f32 / 16777216.0
 }
 
 /// Direction a ball leaves the paddle, from where it struck.
@@ -94,10 +89,10 @@ impl BreakoutGame {
         self.update_paddle(ctx, paddle);
         self.physics.update(ctx.world, ctx.delta_time);
 
-        // Snapshot this frame's collision events once. Every consumer below
-        // works from this slice instead of re-reading collision_events(), so
-        // gameplay never depends on how long physics retains its buffer.
-        let collisions: Vec<CollisionData> = self.physics.collision_events().to_vec();
+        // Drain this frame's collision events once (take = the buffer is
+        // consumed, not borrowed). Every consumer below shares this Vec, and
+        // no borrow of `self.physics` is held while reacting.
+        let collisions: Vec<CollisionData> = self.physics.take_collision_events();
 
         self.glue_serving_ball(ctx.world, paddle);
         self.handle_state_input(ctx);
@@ -120,14 +115,9 @@ impl BreakoutGame {
     /// engine's per-frame line buffer. When the collider-debug overlay is
     /// enabled, the collider outlines are pushed on top.
     fn step_and_emit_grid(&mut self, ctx: &mut GameContext) {
-        if let Some(grid) = self.grid.as_mut() {
-            grid.step(ctx.delta_time);
-            let verts = grid.build_line_vertices();
-            ctx.lines.extend_from_slice(verts);
-        }
-        if self.debug_colliders {
-            debug::draw_colliders(ctx.world, ctx.lines, Vec4::new(1.0, 0.2, 1.0, 0.9), 2.0);
-        }
+        engine_core::grid::step_and_emit_grid(
+            self.grid.as_mut(), ctx.world, ctx.lines, ctx.delta_time, self.debug_colliders,
+        );
     }
 
     /// Move the paddle from keyboard or mouse. Mouse takes over whenever it
@@ -202,7 +192,7 @@ impl BreakoutGame {
     fn launch_balls(&mut self, ctx: &mut GameContext) {
         let Some(ball) = self.ball else { return };
 
-        let angle = (hash_f32(self.frame_count) - 0.5) * 0.6; // ±0.3 rad off vertical
+        let angle = (hash_f32(self.frame_count) - 0.5) * LAUNCH_ANGLE_SPREAD; // ±0.3 rad off vertical
         let dir = Vec2::new(angle.sin(), angle.cos());
         let speed = (BALL_SPEED * self.speed_mult).min(BALL_MAX_SPEED);
         self.physics.set_velocity(ball, dir * speed, 0.0);
@@ -210,12 +200,12 @@ impl BreakoutGame {
         if self.chaos_mode.is_ridiculous() {
             let pos = entity_position(ctx.world, ball).unwrap_or(Vec2::new(0.0, PADDLE_Y + SERVE_OFFSET_Y));
             let extra = self.spawn_ball(ctx.world);
-            let theme = ChaosTheme::for_mode(self.chaos_mode);
+            let theme = theme_for(self.chaos_mode);
             if let Some(t) = ctx.world.get_mut::<Transform2D>(extra) {
                 t.position = pos;
             }
             if let Some(s) = ctx.world.get_mut::<Sprite>(extra) {
-                s.color = theme.ball_color;
+                s.color = theme.accent_color;
             }
             let dir2 = Vec2::new(-angle.sin(), angle.cos());
             self.physics.set_velocity(extra, dir2 * speed, 0.0);
@@ -249,7 +239,7 @@ impl BreakoutGame {
     /// Paddle bounces: aim the ball by hit offset, reset the combo, apply
     /// the Insane speed gain, and spray particles.
     fn check_paddle_hits(&mut self, ctx: &mut GameContext, collisions: &[CollisionData], paddle: EntityId) {
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         let paddle_x = entity_x(ctx.world, paddle);
 
         for &ball in &self.all_balls() {
@@ -274,8 +264,8 @@ impl BreakoutGame {
             if let Some(grid) = self.grid.as_mut() {
                 grid.apply_impulse(&GridImpulse::Radial {
                     position: pos,
-                    strength: 200.0,
-                    radius: 70.0,
+                    strength: GRID_IMPULSE_PADDLE_HIT_STRENGTH,
+                    radius: GRID_IMPULSE_PADDLE_HIT_RADIUS,
                     attractive: false,
                 });
             }
@@ -304,7 +294,7 @@ impl BreakoutGame {
         if hit.is_empty() { return; }
 
         let wrecking_active = self.wrecking_active();
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         // Descending order: removals at index i never shift lower indices.
         for &i in hit.iter().rev() {
             match brick_hit_outcome(self.bricks[i].hits_left, wrecking_active) {
@@ -313,10 +303,10 @@ impl BreakoutGame {
                     let entity = self.bricks[i].entity;
                     // Visible battle damage: dim the tint and the glow.
                     if let Some(s) = ctx.world.get_mut::<Sprite>(entity) {
-                        s.color.x *= 0.65;
-                        s.color.y *= 0.65;
-                        s.color.z *= 0.65;
-                        s.emissive *= 0.5;
+                        s.color.x *= BRICK_DAMAGE_COLOR_FACTOR;
+                        s.color.y *= BRICK_DAMAGE_COLOR_FACTOR;
+                        s.color.z *= BRICK_DAMAGE_COLOR_FACTOR;
+                        s.emissive *= BRICK_DAMAGE_EMISSIVE_FACTOR;
                     }
                     if let Some(pos) = entity_position(ctx.world, entity) {
                         ctx.particles.spawn_burst(
@@ -370,8 +360,8 @@ impl BreakoutGame {
             if let Some(grid) = self.grid.as_mut() {
                 grid.apply_impulse(&GridImpulse::Radial {
                     position: pos,
-                    strength: 260.0,
-                    radius: 90.0,
+                    strength: GRID_IMPULSE_BRICK_DESTROY_STRENGTH,
+                    radius: GRID_IMPULSE_BRICK_DESTROY_RADIUS,
                     attractive: false,
                 });
             }
@@ -389,8 +379,8 @@ impl BreakoutGame {
         if self.state != GameState::Playing { return; }
         let Some(sensor) = self.bottom_sensor else { return };
 
-        let bound_x = WIN_W / 2.0 + 60.0;
-        let bound_y = WIN_H / 2.0 + 60.0;
+        let bound_x = WIN_W / 2.0 + BALL_LOST_BOUNDS_PAD;
+        let bound_y = WIN_H / 2.0 + BALL_LOST_BOUNDS_PAD;
         let mut lost: Vec<EntityId> = Vec::new();
         for &ball in &self.all_balls() {
             let sensor_hit = collisions.iter()
@@ -405,15 +395,15 @@ impl BreakoutGame {
         }
         if lost.is_empty() { return; }
 
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         for ball in lost {
             let pos = entity_position(ctx.world, ball).unwrap_or(Vec2::new(0.0, -WIN_H / 2.0));
             ctx.particles.spawn_burst(pos, &effects::ball_lost_burst(&theme, self.tex_id));
             if let Some(grid) = self.grid.as_mut() {
                 grid.apply_impulse(&GridImpulse::Radial {
                     position: pos,
-                    strength: 700.0,
-                    radius: 160.0,
+                    strength: GRID_IMPULSE_BALL_LOST_STRENGTH,
+                    radius: GRID_IMPULSE_BALL_LOST_RADIUS,
                     attractive: false,
                 });
             }
@@ -441,9 +431,9 @@ impl BreakoutGame {
         }
 
         let fresh = self.spawn_ball(ctx.world);
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         if let Some(s) = ctx.world.get_mut::<Sprite>(fresh) {
-            s.color = theme.ball_color;
+            s.color = theme.accent_color;
         }
         self.ball = Some(fresh);
         self.state = GameState::Serving;

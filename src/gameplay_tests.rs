@@ -52,7 +52,7 @@ fn armored_brick_reflects_first_hit_and_dies_on_second() {
     let mut reflected_after_first = false;
     for _ in 0..600 {
         physics.update(&mut world, 1.0 / 60.0);
-        let events = physics.collision_events().to_vec();
+        let events = physics.take_collision_events();
         let hit = events.iter().any(|c| c.event.started && c.event.involves(ball, brick));
         if hit {
             hits += 1;
@@ -120,7 +120,7 @@ fn falling_pickup_caught_by_paddle_and_missed_one_hits_sensor() {
     let mut missed = false;
     for _ in 0..600 {
         physics.update(&mut world, 1.0 / 60.0);
-        let events = physics.collision_events().to_vec();
+        let events = physics.take_collision_events();
         if events.iter().any(|c| c.event.started && c.event.involves(on_target, paddle)) {
             caught = true;
             physics.destroy_entity(&mut world, on_target);
@@ -249,7 +249,7 @@ fn ball_reflects_off_every_brick_it_destroys() {
 
     for _frame in 0..3600 {
         physics.update(&mut world, 1.0 / 60.0);
-        let collisions: Vec<CollisionData> = physics.collision_events().to_vec();
+        let collisions: Vec<CollisionData> = physics.take_collision_events();
 
         // maintain_all_ball_velocities equivalent
         if let Some((vel, _)) = physics.get_body_velocity(ball) {

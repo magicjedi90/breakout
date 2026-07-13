@@ -13,15 +13,14 @@ mod spawning;
 mod types;
 
 use engine_core::prelude::*;
-use chaos_theme::ChaosTheme;
+use chaos_theme::theme_for;
 use constants::*;
-use levels::game_root;
 use spawning::*;
 use types::*;
 
 impl Game for BreakoutGame {
     fn init(&mut self, ctx: &mut GameContext) {
-        let font_path = game_root().join("assets/fonts/font.ttf");
+        let font_path = engine_core::game_root!().join("assets/fonts/font.ttf");
         if let Ok(font) = ctx.ui.load_font_file(&font_path.to_string_lossy()) {
             ctx.ui.set_default_font(font);
         }
@@ -34,8 +33,9 @@ impl Game for BreakoutGame {
         self.ball_tex_id = ctx.assets.load_texture("ball_8px.png")
             .expect("missing assets/ball_8px.png").id;
 
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
-        self.background = Some(spawn_background(ctx.world, tex.id, theme.bg_color));
+        let theme = theme_for(self.chaos_mode);
+        self.background = Some(spawn_background(
+            ctx.world, tex.id, theme.bg_color, Vec2::new(WIN_W, WIN_H)));
 
         self.paddle = Some(spawn_paddle(ctx.world, tex.id));
 
@@ -43,9 +43,9 @@ impl Game for BreakoutGame {
         // life-loss sensor.
         let top_y = WIN_H / 2.0 - WALL_THICKNESS / 2.0;
         let side_x = WIN_W / 2.0 - WALL_THICKNESS / 2.0;
-        self.walls.push(spawn_wall(ctx.world, Vec2::new(0.0, top_y), WIN_W, WALL_THICKNESS, tex.id, theme.wall_color));
-        self.walls.push(spawn_wall(ctx.world, Vec2::new(-side_x, 0.0), WALL_THICKNESS, WIN_H, tex.id, theme.wall_color));
-        self.walls.push(spawn_wall(ctx.world, Vec2::new(side_x, 0.0), WALL_THICKNESS, WIN_H, tex.id, theme.wall_color));
+        self.walls.push(spawn_wall(ctx.world, Vec2::new(0.0, top_y), WIN_W, WALL_THICKNESS, tex.id, theme.structure_color));
+        self.walls.push(spawn_wall(ctx.world, Vec2::new(-side_x, 0.0), WALL_THICKNESS, WIN_H, tex.id, theme.structure_color));
+        self.walls.push(spawn_wall(ctx.world, Vec2::new(side_x, 0.0), WALL_THICKNESS, WIN_H, tex.id, theme.structure_color));
 
         self.bottom_sensor = Some(spawn_bottom_sensor(ctx.world));
 
@@ -55,7 +55,7 @@ impl Game for BreakoutGame {
 
         // Bricks and ball spawn fresh on every `start_game()`. Build the
         // deforming grid backdrop now so it exists before the first match.
-        self.grid = Some(effects::build_grid(&theme));
+        self.grid = Some(default_playfield_grid(&theme));
     }
 
     fn update(&mut self, ctx: &mut GameContext) {
@@ -76,7 +76,7 @@ impl Game for BreakoutGame {
 fn main() {
     // Anchor assets and saves to the game's directory so launching from any
     // working directory behaves the same.
-    let root = game_root();
+    let root = engine_core::game_root!();
     let config = GameConfig::new("Insiculous Breakout")
         .with_size(WIN_W as u32, WIN_H as u32)
         .with_clear_color(0.0, 0.0, 0.0, 1.0)

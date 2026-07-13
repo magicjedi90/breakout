@@ -30,18 +30,6 @@ pub(crate) fn spawn_wall(world: &mut World, pos: Vec2, w: f32, h: f32, tex: u32,
         .id()
 }
 
-pub(crate) fn spawn_background(world: &mut World, tex: u32, color: Vec4) -> EntityId {
-    // Slightly oversize so resizes don't reveal a seam.
-    let w = WIN_W * 1.2;
-    let h = WIN_H * 1.2;
-    world.spawn()
-        .with(Transform2D::from_parts(Vec2::ZERO, 0.0, Vec2::new(w / RENDER_UNIT, h / RENDER_UNIT)))
-        // Background is intentionally non-emissive so the grid lines (drawn
-        // on top by the line pipeline) and gameplay sprites pop against it.
-        .with(Sprite::new(tex).with_color(color).with_depth(-100.0))
-        .id()
-}
-
 /// Sensor strip below the visible playfield — touching it costs a ball.
 pub(crate) fn spawn_bottom_sensor(world: &mut World) -> EntityId {
     world.spawn()

@@ -3,8 +3,6 @@ use engine_core::prelude::*;
 pub(crate) const WIN_W: f32 = 800.0;
 pub(crate) const WIN_H: f32 = 600.0;
 
-// The renderer multiplies Transform2D.scale by 80 to get pixel size.
-pub(crate) const RENDER_UNIT: f32 = 80.0;
 
 pub(crate) const WALL_THICKNESS: f32 = 20.0;
 /// Inner edge of the side walls — the playfield half-width.
@@ -34,6 +32,9 @@ pub(crate) const INSANE_SPEED_GAIN: f32 = 1.15;
 
 /// Resting offset of a served ball above the paddle center.
 pub(crate) const SERVE_OFFSET_Y: f32 = PADDLE_H / 2.0 + BALL_RADIUS + 2.0;
+/// Full width of the random launch-angle spread, in radians. A served ball
+/// leaves within ±half this off vertical.
+pub(crate) const LAUNCH_ANGLE_SPREAD: f32 = 0.6;
 
 pub(crate) const BRICK_COLS: usize = 10;
 pub(crate) const BRICK_ROWS: usize = 6;
@@ -44,6 +45,12 @@ pub(crate) const BRICK_GAP: f32 = 4.0;
 pub(crate) const BRICK_TOP_Y: f32 = 240.0;
 /// Points awarded per brick = (rows from the bottom of the grid) * this.
 pub(crate) const BRICK_VALUE_STEP: u32 = 10;
+/// Battle-damage dimming applied to each color channel of an armored brick
+/// on every non-fatal hit.
+pub(crate) const BRICK_DAMAGE_COLOR_FACTOR: f32 = 0.65;
+/// Battle-damage dimming applied to an armored brick's glow on every
+/// non-fatal hit.
+pub(crate) const BRICK_DAMAGE_EMISSIVE_FACTOR: f32 = 0.5;
 
 // Falling power-up pickups dropped by special bricks.
 pub(crate) const PICKUP_SIZE: f32 = 18.0;
@@ -68,6 +75,19 @@ pub(crate) const STARTING_LIVES: u32 = 3;
 /// Bricks destroyed in one volley (without touching the paddle) to unlock
 /// the combo achievement.
 pub(crate) const COMBO_TARGET: u32 = 5;
+
+/// Extra margin past the window edge before an off-screen ball counts as
+/// lost (safety net for CCD misses / NaN positions).
+pub(crate) const BALL_LOST_BOUNDS_PAD: f32 = 60.0;
+
+// Radial impulses kicked into the spring-mass background grid, one strength
+// and radius per event that disturbs it.
+pub(crate) const GRID_IMPULSE_PADDLE_HIT_STRENGTH: f32 = 200.0;
+pub(crate) const GRID_IMPULSE_PADDLE_HIT_RADIUS: f32 = 70.0;
+pub(crate) const GRID_IMPULSE_BRICK_DESTROY_STRENGTH: f32 = 260.0;
+pub(crate) const GRID_IMPULSE_BRICK_DESTROY_RADIUS: f32 = 90.0;
+pub(crate) const GRID_IMPULSE_BALL_LOST_STRENGTH: f32 = 700.0;
+pub(crate) const GRID_IMPULSE_BALL_LOST_RADIUS: f32 = 160.0;
 
 pub(crate) const PADDLE_COLOR: Vec4 = Vec4::new(0.4, 0.85, 1.0, 1.0);
 /// Classic rainbow rows, top to bottom.

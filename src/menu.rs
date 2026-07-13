@@ -1,37 +1,16 @@
 use engine_core::prelude::*;
-use crate::chaos_theme::ChaosTheme;
+use crate::chaos_theme::theme_for;
 use crate::constants::*;
 use crate::spawning;
 use crate::types::*;
 
-fn menu_navigate(current: u8, count: u8, up: bool, down: bool) -> u8 {
-    if up {
-        if current == 0 { count - 1 } else { current - 1 }
-    } else if down {
-        (current + 1) % count
-    } else {
-        current
-    }
-}
-
-fn nav_keys(ctx: &GameContext) -> (bool, bool, bool, bool) {
-    let up = ctx.input.is_key_just_pressed(KeyCode::ArrowUp)
-        || ctx.input.is_key_just_pressed(KeyCode::KeyW);
-    let down = ctx.input.is_key_just_pressed(KeyCode::ArrowDown)
-        || ctx.input.is_key_just_pressed(KeyCode::KeyS);
-    let confirm = ctx.input.is_key_just_pressed(KeyCode::Space)
-        || ctx.input.is_key_just_pressed(KeyCode::Enter);
-    let back = ctx.input.is_key_just_pressed(KeyCode::Escape);
-    (up, down, confirm, back)
-}
-
 impl BreakoutGame {
     pub(crate) fn update_title_input(&mut self, ctx: &mut GameContext, selection: u8) {
-        let (up, down, confirm, _) = nav_keys(ctx);
-        let selection = menu_navigate(selection, 2, up, down);
+        let input = MenuInput::read(ctx.input);
+        let selection = input.navigate(selection, 2);
         self.state = GameState::TitleScreen { selection };
 
-        if confirm {
+        if input.confirm {
             match selection {
                 0 => self.state = GameState::LevelSelect { selection: 0 },
                 _ => self.state = GameState::Achievements,
@@ -49,14 +28,14 @@ impl BreakoutGame {
     }
 
     pub(crate) fn update_level_select_input(&mut self, ctx: &mut GameContext, selection: u8) {
-        let (up, down, confirm, back) = nav_keys(ctx);
+        let input = MenuInput::read(ctx.input);
         let count = crate::levels::LEVELS.len() as u8;
-        let selection = menu_navigate(selection, count, up, down);
+        let selection = input.navigate(selection, count);
         self.state = GameState::LevelSelect { selection };
 
-        if back {
+        if input.back {
             self.state = GameState::TitleScreen { selection: 0 };
-        } else if confirm {
+        } else if input.confirm {
             let index = selection as usize;
             self.selected_level = index;
             // Chaos mode is a property of the level now, not a menu choice.
@@ -115,32 +94,16 @@ impl BreakoutGame {
     /// Push the current `chaos_mode`'s look onto the live entities:
     /// background tint, wall color, ball color, and grid color.
     pub(crate) fn apply_theme(&mut self, world: &mut World) {
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         if let Some(bg) = self.background {
             if let Some(s) = world.get_mut::<Sprite>(bg) { s.color = theme.bg_color; }
         }
         for &w in &self.walls {
-            if let Some(s) = world.get_mut::<Sprite>(w) { s.color = theme.wall_color; }
+            if let Some(s) = world.get_mut::<Sprite>(w) { s.color = theme.structure_color; }
         }
         for ball in self.ball.into_iter().chain(self.extra_balls.iter().copied()) {
-            if let Some(s) = world.get_mut::<Sprite>(ball) { s.color = theme.ball_color; }
+            if let Some(s) = world.get_mut::<Sprite>(ball) { s.color = theme.accent_color; }
         }
-        self.grid = Some(crate::effects::build_grid(&theme));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn menu_navigate_wraps_both_directions() {
-        assert_eq!(menu_navigate(0, 3, true, false), 2);
-        assert_eq!(menu_navigate(2, 3, false, true), 0);
-    }
-
-    #[test]
-    fn menu_navigate_holds_position_without_input() {
-        assert_eq!(menu_navigate(1, 3, false, false), 1);
+        self.grid = Some(default_playfield_grid(&theme));
     }
 }

@@ -1,6 +1,6 @@
 use engine_core::prelude::*;
 use crate::achievements::DISPLAY_SECTIONS;
-use crate::chaos_theme::ChaosTheme;
+use crate::chaos_theme::theme_for;
 use crate::types::*;
 
 impl BreakoutGame {
@@ -36,7 +36,7 @@ impl BreakoutGame {
         for (i, level) in crate::levels::LEVELS.iter().enumerate() {
             let prefix = if i as u8 == selection { "> " } else { "  " };
             // Each entry glows in its chaos mode's banner color.
-            let c = ChaosTheme::for_mode(level.mode).banner_color;
+            let c = theme_for(level.mode).banner_color;
             ctx.ui.label_centered_styled(
                 &format!("{prefix}{} - {}", level.title, level.mode.label()),
                 Vec2::new(cx, 200.0 + i as f32 * 30.0),
@@ -110,7 +110,7 @@ impl BreakoutGame {
         let lives_text = format!("LIVES {}", "* ".repeat(self.lives as usize).trim_end());
         ctx.ui.label(&lives_text, Vec2::new(ctx.window_size.x - 140.0, 16.0));
 
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
+        let theme = theme_for(self.chaos_mode);
         if let Some(banner) = theme.banner_text {
             let color = Color::new(theme.banner_color.x, theme.banner_color.y, theme.banner_color.z, theme.banner_color.w);
             ctx.ui.label_centered_styled(banner, Vec2::new(cx, ctx.window_size.y - 24.0), color, 16.0);

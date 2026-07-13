@@ -16,22 +16,6 @@ use crate::constants::{BRICK_ROWS, BRICK_VALUE_STEP};
 use crate::spawning::brick_value;
 use crate::types::{Brick, PickupKind};
 
-/// Directory that holds the game's `assets/` and `saves/` folders.
-///
-/// Prefers the executable's directory (shipped layout: assets next to the
-/// binary), falling back to the crate directory so `cargo run` works from
-/// any current working directory.
-pub(crate) fn game_root() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if dir.join("assets").is_dir() {
-                return dir.to_path_buf();
-            }
-        }
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
 /// A selectable level: display name, scene file, and the chaos mode it
 /// plays in. The layouts live in the scene files (editor-authorable); this
 /// table is deliberately a Rust const — breakout has no serde/ron deps.
@@ -65,7 +49,7 @@ pub(crate) fn level_hint(index: usize) -> &'static str {
 /// `SceneLoader::load_from_file` takes raw filesystem paths (it does not go
 /// through `GameConfig.asset_base_path`), so the path is anchored explicitly.
 pub(crate) fn level_scene_path(scene_file: &str) -> PathBuf {
-    game_root().join("assets/scenes").join(scene_file)
+    engine_core::game_root!().join("assets/scenes").join(scene_file)
 }
 
 /// Parse a level's scene from disk. Returns `None` (with a console warning)
@@ -195,9 +179,7 @@ pub(crate) fn spawn_bricks_from_scene(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{
-        BRICK_COLS, BRICK_GAP, BRICK_H, BRICK_W, PADDLE_Y, PLAYFIELD_HALF_W, RENDER_UNIT,
-    };
+    use crate::constants::{BRICK_COLS, BRICK_GAP, BRICK_H, BRICK_W, PADDLE_Y, PLAYFIELD_HALF_W};
     use crate::spawning::{brick_x, brick_y};
     use engine_core::prelude::ComponentData;
 
