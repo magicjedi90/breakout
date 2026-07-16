@@ -39,6 +39,30 @@ impl BreakoutGame {
             self.debug_colliders = !self.debug_colliders;
         }
 
+        // Pause gate: while paused the whole match is frozen — no physics
+        // step, no collision drain, no input; the overlay draws in the UI pass.
+        if matches!(self.state, GameState::Serving | GameState::Playing) {
+            let action = self.pause.update(ctx.players, ctx.input);
+            ctx.time_scale = self.pause.time_scale();
+            match action {
+                PauseAction::Restart => { self.start_game(ctx); return; }
+                PauseAction::QuitToTitle => { self.reset_to_title(ctx.world); return; }
+                PauseAction::ExitGame => { ctx.exit_requested = true; return; }
+                // Skip the rest of the frame so the resuming keypress can't
+                // leak into gameplay (Space must not also launch the ball).
+                PauseAction::Resumed => return,
+                PauseAction::Idle => {}
+            }
+            if self.pause.is_active() {
+                // Keep the frozen scene visible under the pause overlay:
+                // re-emit the grid without advancing it (dt 0).
+                engine_core::grid::step_and_emit_grid(
+                    self.grid.as_mut(), ctx.world, ctx.lines, 0.0, self.debug_colliders,
+                );
+                return;
+            }
+        }
+
         self.update_paddles(ctx);
         self.physics.update(ctx.world, ctx.delta_time);
 

@@ -14,17 +14,16 @@ pub(crate) fn serve_side_after_loss(mode: GameMode, lost_past: PaddleSide) -> Pa
 
 impl BreakoutGame {
     /// State transitions during a match. Either player's primary action
-    /// (Space/Enter/click/pad A) launches or restarts; either player's menu
-    /// action (Escape/pad Start) bails to the title screen.
+    /// (Space/Enter/click/pad A) launches or restarts. Menu (Escape/pad
+    /// Start) during Serving/Playing is handled by the pause gate upstream;
+    /// GameOver keeps the direct exit to the title screen.
     pub(super) fn handle_state_input(&mut self, ctx: &mut GameContext) {
         let launch = ctx.players.just_activated_any(GameAction::Action1, ctx.input);
         let menu = ctx.players.just_activated_any(GameAction::Menu, ctx.input);
 
         match &self.state {
             GameState::Serving => {
-                if menu {
-                    self.reset_to_title(ctx.world);
-                } else if launch {
+                if launch {
                     self.launch_balls(ctx);
                 }
             }
@@ -32,11 +31,6 @@ impl BreakoutGame {
                 if launch {
                     self.start_game(ctx);
                 } else if menu {
-                    self.reset_to_title(ctx.world);
-                }
-            }
-            GameState::Playing => {
-                if menu {
                     self.reset_to_title(ctx.world);
                 }
             }

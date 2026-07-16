@@ -7,7 +7,7 @@ use crate::types::*;
 impl BreakoutGame {
     pub(crate) fn update_title_input(&mut self, ctx: &mut GameContext, selection: u8) {
         let input = MenuInput::read(ctx.input);
-        let selection = input.navigate(selection, 3);
+        let selection = input.navigate(selection, 4);
         self.state = GameState::TitleScreen { selection };
 
         if input.confirm {
@@ -20,7 +20,8 @@ impl BreakoutGame {
                     self.mode = GameMode::TwoPlayerCoop;
                     self.state = GameState::LevelSelect { selection: 0 };
                 }
-                _ => self.state = GameState::Achievements,
+                2 => self.state = GameState::Achievements,
+                _ => ctx.exit_requested = true,
             }
         }
     }

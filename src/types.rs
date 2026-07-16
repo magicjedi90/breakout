@@ -99,6 +99,8 @@ pub(crate) struct BreakoutGame {
     pub(crate) grid: Option<GridMesh>,
     /// F1 toggles magenta collider outlines over the sprites.
     pub(crate) debug_colliders: bool,
+    /// Engine pause menu (Esc/Start toggles during a match).
+    pub(crate) pause: PauseMenu,
 }
 
 impl Default for BreakoutGame {
@@ -130,6 +132,7 @@ impl Default for BreakoutGame {
             combo: 0,
             grid: None,
             debug_colliders: false,
+            pause: PauseMenu::new(),
         }
     }
 }
