@@ -323,3 +323,59 @@ fn min_vertical_pushes_pure_horizontal_upward() {
     assert!(fixed.y > 0.0);
     assert!((fixed.length() - 1.0).abs() < 0.0001);
 }
+
+use crate::gameplay::{paddle_bounce_direction_for, serve_side_after_loss, serving_glue_y};
+use crate::types::{GameMode, PaddleSide};
+
+#[test]
+fn top_paddle_bounce_sends_ball_downward() {
+    // Without the side-aware flip the top paddle would fire balls straight
+    // into itself / the top loss sensor.
+    for offset in [-1.0, -0.5, 0.0, 0.5, 1.0] {
+        let dir = paddle_bounce_direction_for(offset, PaddleSide::Top);
+        assert!(dir.y < 0.0, "top bounce at offset {offset} points up: {dir:?}");
+        // X deflection matches the bottom paddle's (same aim control)
+        let bottom = paddle_bounce_direction_for(offset, PaddleSide::Bottom);
+        assert_eq!(dir.x, bottom.x);
+    }
+}
+
+#[test]
+fn bottom_paddle_bounce_still_sends_ball_up() {
+    for offset in [-1.0, 0.0, 1.0] {
+        let dir = paddle_bounce_direction_for(offset, PaddleSide::Bottom);
+        assert!(dir.y > 0.0, "bottom bounce at offset {offset} points down: {dir:?}");
+        assert_eq!(dir, paddle_bounce_direction(offset), "bottom side is the classic bounce");
+    }
+}
+
+#[test]
+fn serve_side_flips_to_the_losing_edge() {
+    // Co-op: whoever let the ball out redeems the serve
+    assert_eq!(
+        serve_side_after_loss(GameMode::TwoPlayerCoop, PaddleSide::Top),
+        PaddleSide::Top
+    );
+    assert_eq!(
+        serve_side_after_loss(GameMode::TwoPlayerCoop, PaddleSide::Bottom),
+        PaddleSide::Bottom
+    );
+    // Solo: there is no top paddle — always serve from the bottom
+    assert_eq!(
+        serve_side_after_loss(GameMode::SinglePlayer, PaddleSide::Top),
+        PaddleSide::Bottom
+    );
+    assert_eq!(
+        serve_side_after_loss(GameMode::SinglePlayer, PaddleSide::Bottom),
+        PaddleSide::Bottom
+    );
+}
+
+#[test]
+fn serving_glue_parks_ball_inside_each_paddle() {
+    let bottom = serving_glue_y(PaddleSide::Bottom);
+    let top = serving_glue_y(PaddleSide::Top);
+    assert!(bottom > PADDLE_Y, "ball rests above the bottom paddle");
+    assert!(top < PADDLE_TOP_Y, "ball rests below the top paddle");
+    assert_eq!(bottom, -top, "serve offsets mirror around the field center");
+}

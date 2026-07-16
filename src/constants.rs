@@ -12,6 +12,8 @@ pub(crate) const PADDLE_W: f32 = 110.0;
 pub(crate) const PADDLE_H: f32 = 16.0;
 pub(crate) const PADDLE_SCALE: Vec2 = Vec2::new(PADDLE_W / RENDER_UNIT, PADDLE_H / RENDER_UNIT);
 pub(crate) const PADDLE_Y: f32 = -260.0;
+/// Player 2's paddle in co-op guards the top edge, mirroring the bottom one.
+pub(crate) const PADDLE_TOP_Y: f32 = -PADDLE_Y;
 pub(crate) const PADDLE_MAX_X: f32 = PLAYFIELD_HALF_W - PADDLE_W / 2.0;
 pub(crate) const PADDLE_SPEED: f32 = 520.0;
 /// Maximum bounce deflection off the paddle, in radians from straight up.
@@ -43,6 +45,9 @@ pub(crate) const BRICK_H: f32 = 24.0;
 pub(crate) const BRICK_GAP: f32 = 4.0;
 /// Y position of the center of the top brick row.
 pub(crate) const BRICK_TOP_Y: f32 = 240.0;
+/// Co-op: top brick row of the middle band. Six rows at the standard pitch
+/// span +70..-70, clear of both paddles' reaction zones.
+pub(crate) const BRICK_TOP_Y_2P: f32 = 70.0;
 /// Points awarded per brick = (rows from the bottom of the grid) * this.
 pub(crate) const BRICK_VALUE_STEP: u32 = 10;
 /// Battle-damage dimming applied to each color channel of an armored brick
@@ -90,6 +95,8 @@ pub(crate) const GRID_IMPULSE_BALL_LOST_STRENGTH: f32 = 700.0;
 pub(crate) const GRID_IMPULSE_BALL_LOST_RADIUS: f32 = 160.0;
 
 pub(crate) const PADDLE_COLOR: Vec4 = Vec4::new(0.4, 0.85, 1.0, 1.0);
+/// Player 2's top paddle in co-op — warm pink against P1's cool cyan.
+pub(crate) const PADDLE2_COLOR: Vec4 = Vec4::new(1.0, 0.5, 0.75, 1.0);
 /// Classic rainbow rows, top to bottom.
 pub(crate) const BRICK_ROW_COLORS: [Vec4; BRICK_ROWS] = [
     Vec4::new(1.0, 0.30, 0.30, 1.0), // red

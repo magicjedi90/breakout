@@ -7,6 +7,8 @@ mod gameplay;
 #[cfg(test)]
 mod gameplay_tests;
 mod levels;
+#[cfg(test)]
+mod levels_tests;
 mod menu;
 mod power_ups;
 mod spawning;
@@ -15,7 +17,6 @@ mod types;
 use engine_core::prelude::*;
 use chaos_theme::theme_for;
 use constants::*;
-use spawning::*;
 use types::*;
 
 impl Game for BreakoutGame {
@@ -37,17 +38,11 @@ impl Game for BreakoutGame {
         self.background = Some(spawn_background(
             ctx.world, tex.id, theme.bg_color, Vec2::new(WIN_W, WIN_H)));
 
-        self.paddle = Some(spawn_paddle(ctx.world, tex.id));
-
-        // Top wall plus the two side walls; the bottom stays open over the
-        // life-loss sensor.
-        let top_y = WIN_H / 2.0 - WALL_THICKNESS / 2.0;
-        let side_x = WIN_W / 2.0 - WALL_THICKNESS / 2.0;
-        self.walls.push(spawn_wall(ctx.world, Vec2::new(0.0, top_y), WIN_W, WALL_THICKNESS, tex.id, theme.structure_color));
-        self.walls.push(spawn_wall(ctx.world, Vec2::new(-side_x, 0.0), WALL_THICKNESS, WIN_H, tex.id, theme.structure_color));
-        self.walls.push(spawn_wall(ctx.world, Vec2::new(side_x, 0.0), WALL_THICKNESS, WIN_H, tex.id, theme.structure_color));
-
-        self.bottom_sensor = Some(spawn_bottom_sensor(ctx.world));
+        // Walls, sensors, and paddles are mode-dependent (co-op opens the
+        // top edge for a second paddle), so the whole playfield structure is
+        // built by rebuild_playfield() at every match start. Solo layout
+        // here just so the editor sees a populated scene before play.
+        self.rebuild_playfield(ctx.world, GameMode::SinglePlayer);
 
         // Brick layouts are authored in per-level scenes (editor-editable);
         // start_game() loads the selected level each match, falling back to
@@ -82,7 +77,8 @@ fn main() {
         .with_clear_color(0.0, 0.0, 0.0, 1.0)
         .with_fps(60)
         .with_asset_base_path(root.join("assets").to_string_lossy())
-        .with_achievement_save_path(root.join("saves/breakout_achievements.json").to_string_lossy());
+        .with_achievement_save_path(root.join("saves/breakout_achievements.json").to_string_lossy())
+        .with_input_settings_path(root.join("saves/input_settings.json").to_string_lossy());
 
     // With `--features editor` the game runs inside the scene editor
     // (hierarchy, inspector, gizmos, play/pause/stop, collider overlay);

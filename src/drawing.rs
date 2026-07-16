@@ -18,14 +18,14 @@ impl BreakoutGame {
 
         ctx.ui.label_centered("INSICULOUS BREAKOUT", Vec2::new(cx, 150.0));
 
-        let items = ["Play", "Achievements"];
+        let items = ["1 Player", "2 Player Co-op", "Achievements"];
         for (i, item) in items.iter().enumerate() {
             let prefix = if i as u8 == selection { "> " } else { "  " };
             ctx.ui.label_centered(&format!("{prefix}{item}"), Vec2::new(cx, 240.0 + i as f32 * 30.0));
         }
 
-        ctx.ui.label_centered("W/S or Arrows to navigate", Vec2::new(cx, 400.0));
-        ctx.ui.label_centered("SPACE to confirm", Vec2::new(cx, 424.0));
+        ctx.ui.label_centered("W/S, Arrows, or D-Pad to navigate", Vec2::new(cx, 400.0));
+        ctx.ui.label_centered("SPACE or (A) to confirm", Vec2::new(cx, 424.0));
     }
 
     fn draw_level_select(&self, ctx: &mut GameContext, selection: u8) {
@@ -33,7 +33,7 @@ impl BreakoutGame {
 
         ctx.ui.label_centered("SELECT LEVEL", Vec2::new(cx, 130.0));
 
-        for (i, level) in crate::levels::LEVELS.iter().enumerate() {
+        for (i, level) in crate::levels::roster(self.mode).iter().enumerate() {
             let prefix = if i as u8 == selection { "> " } else { "  " };
             // Each entry glows in its chaos mode's banner color.
             let c = theme_for(level.mode).banner_color;
@@ -46,7 +46,7 @@ impl BreakoutGame {
         }
 
         ctx.ui.label_centered(
-            crate::levels::level_hint(selection as usize),
+            crate::levels::level_hint(self.mode, selection as usize),
             Vec2::new(cx, 360.0),
         );
         ctx.ui.label_centered("SPACE to confirm, ESC to go back", Vec2::new(cx, 400.0));
@@ -109,6 +109,9 @@ impl BreakoutGame {
         ctx.ui.label(&format!("SCORE {}", self.score), Vec2::new(40.0, 16.0));
         let lives_text = format!("LIVES {}", "* ".repeat(self.lives as usize).trim_end());
         ctx.ui.label(&lives_text, Vec2::new(ctx.window_size.x - 140.0, 16.0));
+        if self.mode == GameMode::TwoPlayerCoop {
+            ctx.ui.label_centered("CO-OP", Vec2::new(cx, 16.0));
+        }
 
         let theme = theme_for(self.chaos_mode);
         if let Some(banner) = theme.banner_text {
@@ -132,8 +135,13 @@ impl BreakoutGame {
 
         match &self.state {
             GameState::Serving => {
-                ctx.ui.label_centered("SPACE or CLICK to launch", Vec2::new(cx, cy - 50.0));
-                ctx.ui.label_centered("Arrows/A/D or mouse to move - ESC for title", Vec2::new(cx, cy - 24.0));
+                let server = match (self.mode, self.serving_side) {
+                    (GameMode::SinglePlayer, _) => "SPACE or CLICK to launch",
+                    (_, PaddleSide::Bottom) => "P1 SERVES - SPACE, CLICK, or (A) to launch",
+                    (_, PaddleSide::Top) => "P2 SERVES - ENTER or (A) to launch",
+                };
+                ctx.ui.label_centered(server, Vec2::new(cx, cy - 50.0));
+                ctx.ui.label_centered("A/D, Arrows, stick, or mouse to move - ESC for title", Vec2::new(cx, cy - 24.0));
             }
             GameState::GameOver { won } => {
                 let msg = if *won { "BOARD CLEARED!" } else { "GAME OVER" };

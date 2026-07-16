@@ -72,22 +72,24 @@ impl BreakoutGame {
     }
 
     /// Resolve paddle catches from this frame's collision snapshot and grant
-    /// the effects.
+    /// the effects. In co-op either paddle catches; pickups fall toward the
+    /// bottom paddle, but a top-paddle graze on the way down still counts.
     pub(crate) fn check_pickup_catches(
         &mut self,
         ctx: &mut GameContext,
         collisions: &[CollisionData],
-        paddle: EntityId,
     ) {
+        let catchers: Vec<EntityId> =
+            [self.paddle, self.paddle_top].into_iter().flatten().collect();
         let caught = self
             .pickups
-            .collect(collisions, &[paddle], &mut self.physics, ctx.world);
+            .collect(collisions, &catchers, &mut self.physics, ctx.world);
         if caught.is_empty() {
             return;
         }
 
         let theme = theme_for(self.chaos_mode);
-        for (kind, _) in caught {
+        for (kind, catcher) in caught {
             let (extra_balls, wrecking) = pickup_effects(kind);
             for _ in 0..extra_balls {
                 self.try_spawn_extra_ball(ctx);
@@ -98,9 +100,11 @@ impl BreakoutGame {
                 self.apply_ball_visuals(ctx.world);
             }
 
-            if let Some(pos) = ctx.world.get::<Transform2D>(paddle).map(|t| t.position) {
+            if let Some(pos) = ctx.world.get::<Transform2D>(catcher).map(|t| t.position) {
+                // Burst toward the field: above the bottom paddle, below the top.
+                let toward_field = if pos.y > 0.0 { -PADDLE_H } else { PADDLE_H };
                 ctx.particles.spawn_burst(
-                    pos + Vec2::new(0.0, PADDLE_H),
+                    pos + Vec2::new(0.0, toward_field),
                     &effects::pickup_catch_burst(pickup_color(kind), &theme, self.tex_id),
                 );
             }

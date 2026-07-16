@@ -7,30 +7,35 @@ use crate::types::*;
 impl BreakoutGame {
     pub(crate) fn update_title_input(&mut self, ctx: &mut GameContext, selection: u8) {
         let input = MenuInput::read(ctx.input);
-        let selection = input.navigate(selection, 2);
+        let selection = input.navigate(selection, 3);
         self.state = GameState::TitleScreen { selection };
 
         if input.confirm {
             match selection {
-                0 => self.state = GameState::LevelSelect { selection: 0 },
+                0 => {
+                    self.mode = GameMode::SinglePlayer;
+                    self.state = GameState::LevelSelect { selection: 0 };
+                }
+                1 => {
+                    self.mode = GameMode::TwoPlayerCoop;
+                    self.state = GameState::LevelSelect { selection: 0 };
+                }
                 _ => self.state = GameState::Achievements,
             }
         }
     }
 
     pub(crate) fn update_achievements_input(&mut self, ctx: &mut GameContext) {
-        if ctx.input.is_key_just_pressed(KeyCode::Escape)
-            || ctx.input.is_key_just_pressed(KeyCode::Space)
-            || ctx.input.is_key_just_pressed(KeyCode::Enter)
-        {
-            self.state = GameState::TitleScreen { selection: 1 };
+        let input = MenuInput::read(ctx.input);
+        if input.back || input.confirm {
+            self.state = GameState::TitleScreen { selection: 2 };
         }
     }
 
     pub(crate) fn update_level_select_input(&mut self, ctx: &mut GameContext, selection: u8) {
         let input = MenuInput::read(ctx.input);
-        let count = crate::levels::LEVELS.len() as u8;
-        let selection = input.navigate(selection, count);
+        let levels = crate::levels::roster(self.mode);
+        let selection = input.navigate(selection, levels.len() as u8);
         self.state = GameState::LevelSelect { selection };
 
         if input.back {
@@ -39,7 +44,7 @@ impl BreakoutGame {
             let index = selection as usize;
             self.selected_level = index;
             // Chaos mode is a property of the level now, not a menu choice.
-            self.chaos_mode = crate::levels::LEVELS[index].mode;
+            self.chaos_mode = levels[index].mode;
             // Mirror the runtime selection into the engine context so any
             // code reading ctx.chaos_mode agrees with self.chaos_mode.
             ctx.chaos_mode = self.chaos_mode;
@@ -47,13 +52,14 @@ impl BreakoutGame {
         }
     }
 
-    /// Reset score/lives, rebuild the brick grid, and put a fresh ball on
-    /// the paddle.
+    /// Reset score/lives, rebuild the playfield for the selected mode,
+    /// rebuild the brick grid, and put a fresh ball on the serving paddle.
     pub(crate) fn start_game(&mut self, ctx: &mut GameContext) {
         self.score = 0;
         self.lives = STARTING_LIVES;
         self.speed_mult = 1.0;
         self.combo = 0;
+        self.serving_side = PaddleSide::Bottom;
 
         self.destroy_all_balls(ctx.world);
         self.destroy_all_pickups(ctx.world);
@@ -61,6 +67,9 @@ impl BreakoutGame {
         for brick in self.bricks.drain(..) {
             self.physics.destroy_entity(ctx.world, brick.entity);
         }
+        // Walls/sensors/paddles differ per mode (co-op opens the top edge),
+        // so the playfield structure is rebuilt every match start.
+        self.rebuild_playfield(ctx.world, self.mode);
         self.bricks = self.spawn_level_bricks(ctx);
 
         let ball = self.spawn_ball(ctx.world);
@@ -70,6 +79,9 @@ impl BreakoutGame {
         if let Some(paddle) = self.paddle {
             self.physics.set_kinematic_target(paddle, Vec2::new(0.0, PADDLE_Y), 0.0);
         }
+        if let Some(paddle) = self.paddle_top {
+            self.physics.set_kinematic_target(paddle, Vec2::new(0.0, PADDLE_TOP_Y), 0.0);
+        }
         self.state = GameState::Serving;
     }
 
@@ -77,7 +89,7 @@ impl BreakoutGame {
     /// to the generated grid when the scene is missing, broken, or empty —
     /// worst case is always the classic layout, never a brickless game.
     fn spawn_level_bricks(&mut self, ctx: &mut GameContext) -> Vec<Brick> {
-        if let Some(level) = crate::levels::load_level_data(self.selected_level) {
+        if let Some(level) = crate::levels::load_level_data(self.mode, self.selected_level) {
             match crate::levels::spawn_bricks_from_scene(&level, ctx.world, ctx.assets) {
                 Ok(bricks) if !bricks.is_empty() => return bricks,
                 Ok(_) => eprintln!(
@@ -88,7 +100,10 @@ impl BreakoutGame {
                 ),
             }
         }
-        spawning::spawn_bricks(ctx.world, self.tex_id)
+        match self.mode {
+            GameMode::SinglePlayer => spawning::spawn_bricks(ctx.world, self.tex_id),
+            GameMode::TwoPlayerCoop => spawning::spawn_bricks_2p(ctx.world, self.tex_id),
+        }
     }
 
     /// Push the current `chaos_mode`'s look onto the live entities:
